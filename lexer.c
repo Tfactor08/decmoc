@@ -241,6 +241,11 @@ Token lexer_next(Lexer *l)
     return l->current;
 }
 
+Token lexer_current(Lexer *l)
+{
+    return l->current;
+}
+
 Token lexer_peek(Lexer *l)
 {
     return l->next;
@@ -256,6 +261,7 @@ Lexer lexer_create(const char *content)
     return l;
 }
 
+#if 0
 int main(void)
 {
     char *source = "sin * cos x - -.69 + duck / 2^duck?";
@@ -271,3 +277,4 @@ int main(void)
         tk.print(&tk);
     }
 }
+#endif
