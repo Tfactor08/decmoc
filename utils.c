@@ -28,7 +28,7 @@ void itoa(int n, char *s)
 
 size_t int_len(int n)
 {
-    int len = 1;
+    int len = 0;
     do {
         len += 1;
     } while ((n /= 10) > 0);
@@ -38,7 +38,7 @@ size_t int_len(int n)
 #if 0
 int main(void)
 {
-    printf("%zu\n", int_len(0));
+    printf("%zu\n", int_len(1000));
 
     return 0;
 }
