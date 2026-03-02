@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 void reverse(char *s)
 {
@@ -28,7 +29,7 @@ void itoa(int n, char *s)
 
 size_t int_len(int n)
 {
-    int len = 0;
+    size_t len = 0;
     do {
         len += 1;
     } while ((n /= 10) > 0);

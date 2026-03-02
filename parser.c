@@ -7,13 +7,15 @@ F -> Id | Integer | (E) | -F | Func(E)
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <assert.h>
+#include <math.h>
 
 #include "lexer.c"
 #include "utils.c"
 
-#define NODETREE_HEAD \
-    float (*eval)(void *self); \
-    char  *(*print)(void *self);
+#define NODETREE_HEAD            \
+    float (*eval)(void *self);   \
+    char  *(*print)(void *self); \
 
 typedef struct {
     NODETREE_HEAD
@@ -25,6 +27,17 @@ typedef struct {
     NodeTree *right;
 } NodeBinary;
 
+typedef enum {
+    SIN,
+    COS
+} FUNC; 
+
+typedef struct {
+    NODETREE_HEAD
+    FUNC func;
+    NodeTree *arg;
+} NodeFunc;
+
 typedef struct {
     NODETREE_HEAD
     NodeTree *arg;
@@ -32,8 +45,13 @@ typedef struct {
 
 typedef struct {
     NODETREE_HEAD
-    int val;
-} NodeInteger;
+    char *string;
+} NodeId;
+
+typedef struct {
+    NODETREE_HEAD
+    float val;
+} NodeNumber;
 
 #define NODE_BINARY_CREATE_FUNC(name)                                 \
     NodeBinary *node_##name##_create(NodeTree *left, NodeTree *right) \
@@ -57,22 +75,35 @@ typedef struct {
         return l->eval(l) operator r->eval(r); \
     }                                          \
 
-#define NODE_BINARY_PRINT_FUNC(name, operator)                              \
-    char *node_##name##_print(void *self)                                   \
-    {                                                                       \
-        NodeBinary *node = (NodeBinary *)self;                              \
-        char *right_string = node->right->print(node->right);               \
-        char *left_string = node->left->print(node->left);                  \
-        size_t result_len = strlen(left_string) + strlen(right_string) + 6; \
-        char *result = malloc(sizeof(char) * result_len);                   \
-        sprintf(result, "(%s #operator %s)", left_string, right_string);    \
-        return result;                                                      \
-    }                                                                       \
+#define NODE_BINARY_PRINT_FUNC(name, operator)                               \
+    char *node_##name##_print(void *self)                                    \
+    {                                                                        \
+        NodeBinary *node = (NodeBinary *)self;                               \
+        char *right_string = node->right->print(node->right);                \
+        char *left_string = node->left->print(node->left);                   \
+        size_t result_len = strlen(left_string) + strlen(right_string) + 6;  \
+        char *result = malloc(sizeof(char) * result_len);                    \
+        sprintf(result, "(%s " #operator " %s)", left_string, right_string); \
+        return result;                                                       \
+    }                                                                        \
 
 NODE_BINARY_CREATE_FUNC(add);
 NODE_BINARY_CREATE_FUNC(sub);
 NODE_BINARY_CREATE_FUNC(mult);
 NODE_BINARY_CREATE_FUNC(div);
+
+NodeFunc *node_func_create(NodeTree *arg, FUNC func)
+{
+    float node_func_eval(void *);
+    char *node_func_print(void *);
+
+    NodeFunc *node = malloc(sizeof(NodeFunc));
+    node->eval = &node_func_eval;
+    node->print = &node_func_print;
+    node->func = func;
+    node->arg = arg;
+    return node;
+}
 
 NodeNegate *node_negate_create(NodeTree *arg)
 {
@@ -86,15 +117,28 @@ NodeNegate *node_negate_create(NodeTree *arg)
     return node;
 }
 
-NodeInteger *node_integer_create(int val)
+NodeNumber *node_number_create(float val)
 {
-    float node_integer_eval(void *);
-    char *node_integer_print(void *);
+    float node_number_eval(void *);
+    char *node_number_print(void *);
 
-    NodeInteger *node = malloc(sizeof(NodeInteger));
-    node->eval = &node_integer_eval;
-    node->print = &node_integer_print;
+    NodeNumber *node = malloc(sizeof(NodeNumber));
+    node->eval = &node_number_eval;
+    node->print = &node_number_print;
     node->val = val;
+    return node;
+}
+
+NodeId *node_id_create(char *string)
+{
+    float node_id_eval(void *);
+    char *node_id_print(void *);
+
+    NodeId *node = malloc(sizeof(NodeId));
+    node->eval = &node_id_eval;
+    node->print = &node_id_print;
+    node->string = malloc(sizeof(char) * (strlen(string) + 1));
+    strcpy(node->string, string);
     return node;
 }
 
@@ -103,6 +147,19 @@ NODE_BINARY_EVAL_FUNC(sub, -);
 NODE_BINARY_EVAL_FUNC(mult, *);
 NODE_BINARY_EVAL_FUNC(div, /);
 
+float node_func_eval(void *self)
+{
+    NodeFunc *node = (NodeFunc *)self;
+    NodeTree *arg = node->arg;
+    FUNC func = node->func;
+    if (func == SIN)
+        return sin(arg->eval(arg));
+    else if (func == COS)
+        return cos(arg->eval(arg));
+    else
+        assert(0 && "Unhandled function");
+}
+
 float node_negate_eval(void *self)
 {
     NodeNegate *node = (NodeNegate *)self;
@@ -110,16 +167,44 @@ float node_negate_eval(void *self)
     return -(arg->eval(arg));
 }
 
-float node_integer_eval(void *self)
+float node_number_eval(void *self)
 {
-    NodeInteger *node = (NodeInteger *)self;
+    NodeNumber *node = (NodeNumber *)self;
     return node->val;
+}
+
+float node_id_eval(void *self)
+{
+    assert(0 && "TODO: not implemented");
+    NodeId *node = (NodeId *)self;
+    return 0;
 }
 
 NODE_BINARY_PRINT_FUNC(add, +);
 NODE_BINARY_PRINT_FUNC(sub, -);
 NODE_BINARY_PRINT_FUNC(mult, *);
 NODE_BINARY_PRINT_FUNC(div, /);
+
+char *node_func_print(void *self)
+{
+    NodeFunc *node = (NodeFunc *)self;
+    char *arg_string = node->arg->print(node->arg);
+    char *func_str;
+    switch (node->func) {
+        case SIN:
+            func_str = "sin";
+            break;
+        case COS:
+            func_str = "cos";
+            break;
+        default:
+            assert(0 && "Unhandled function");
+    }
+    size_t result_len = strlen(arg_string) + strlen(func_str) + 5;
+    char *result = malloc(sizeof(char) * result_len);
+    sprintf(result, "(%s(%s))", func_str, arg_string);
+    return result;
+}
 
 char *node_negate_print(void *self)
 {
@@ -131,12 +216,19 @@ char *node_negate_print(void *self)
     return result;
 }
 
-char *node_integer_print(void *self)
+char *node_number_print(void *self)
 {
-    NodeInteger *node = (NodeInteger *)self;
-    char *result = malloc(sizeof(char) * int_len(node->val));
-    itoa(node->val, result);
+    NodeNumber *node = (NodeNumber *)self;
+    size_t result_len = int_len((int)node->val) + 4;
+    char *result = malloc(sizeof(char) * result_len);
+    sprintf(result, "%.2f", node->val);
     return result;
+}
+
+char *node_id_print(void *self)
+{
+    NodeId *node = (NodeId *)self;
+    return node->string;
 }
 
 NodeTree *expression(Lexer *l)
@@ -144,14 +236,17 @@ NodeTree *expression(Lexer *l)
     NodeTree *term(Lexer *);
 
     NodeTree *a = term(l);
+    if (!a) return NULL;
     while (true) {
         if (lexer_current(l).kind == TK_PLUS) {
             lexer_next(l);
             NodeTree *b = term(l);
+            if (!b) return NULL;
             a = (NodeTree *)node_add_create(a, b);
         } else if (lexer_current(l).kind == TK_MINUS) {
             lexer_next(l);
             NodeTree *b = term(l);
+            if (!b) return NULL;
             a = (NodeTree *)node_sub_create(a, b);
         } else {
             return a;
@@ -164,14 +259,17 @@ NodeTree *term(Lexer *l)
     NodeTree *factor(Lexer *);
 
     NodeTree *a = factor(l);
+    if (!a) return NULL;
     while (true) {
         if (lexer_current(l).kind == TK_MULT) {
             lexer_next(l);
             NodeTree *b = factor(l);
+            if (!b) return NULL;
             a = (NodeTree *)node_mult_create(a, b);
         } else if (lexer_current(l).kind == TK_DIV) {
             lexer_next(l);
             NodeTree *b = factor(l);
+            if (!b) return NULL;
             a = (NodeTree *)node_div_create(a, b);
         } else {
             return a;
@@ -181,40 +279,90 @@ NodeTree *term(Lexer *l)
 
 NodeTree *factor(Lexer *l)
 {
-    Token tk = lexer_current(l);
-    if (tk.kind == TK_INT) {
+    Token curr_tk = lexer_current(l);
+    if (curr_tk.kind == TK_INT || curr_tk.kind == TK_DEC) {
         lexer_next(l);
-        return (NodeTree *)node_integer_create(token_get_int(&tk));
-    } else if (tk.kind == TK_MINUS) {
+        if (curr_tk.kind == TK_INT)
+            return (NodeTree *)node_number_create(token_get_int(&curr_tk));
+        else if (curr_tk.kind == TK_DEC)
+            return (NodeTree *)node_number_create(token_get_dec(&curr_tk));
+    } else if (curr_tk.kind == TK_ID) {
         lexer_next(l);
-        return (NodeTree *)node_negate_create(factor(l));
-    } else if (tk.kind == TK_OPENP) {
+        return (NodeTree *)node_id_create(token_get_string(&curr_tk));
+    } else if (curr_tk.kind == TK_MINUS) {
         lexer_next(l);
-        NodeTree *a = expression(l);
+        NodeTree *f = factor(l);
+        if (!f) return NULL;
+        return (NodeTree *)node_negate_create(f);
+    } else if (curr_tk.kind == TK_OPENP) {
+        lexer_next(l);
+        NodeTree *e = expression(l);
+        if (!e) return NULL;
         if (lexer_current(l).kind == TK_CLOSEP) {
             lexer_next(l);
-            return a;
+            return e;
         } else {
-            fprintf(stderr, "ERROR (parser): unmatching )\n");
-            exit(1);
+            fprintf(stderr, "ERROR (parser): unmatching (\n");
+            return NULL;
         }
+    } else if (curr_tk.kind == TK_FUNC) {
+        NodeFunc *func;
+        Token func_tk = curr_tk;
+        lexer_next(l);
+        if (lexer_current(l).kind != TK_OPENP) {
+            fprintf(stderr, "ERROR (parser): ( expected after function\n");
+            return NULL;
+        }
+        lexer_next(l);
+        NodeTree *e = expression(l);
+        if (!e) return NULL;
+        char *func_str = token_get_string(&func_tk);
+        // TODO: inconsistency: in the lexer function token is defined by the corresponding string but in the parser
+        // by the FUNC enum => we have to compare strings thus creating an overhead
+        if (strcmp(func_str, SIN_STR) == 0)
+            func = node_func_create(e, SIN);
+        else if (strcmp(func_str, COS_STR) == 0)
+            func = node_func_create(e, COS);
+        else
+            assert(0 && "Unhandled function");
+        if (lexer_current(l).kind != TK_CLOSEP) {
+            fprintf(stderr, "Unmatching ) for function");
+            return NULL;
+        }
+        lexer_next(l);
+        return (NodeTree *)func;
+    } else if (curr_tk.kind == TK_ERROR) {
+        fprintf(stderr, "ERROR (lexer): %s\n", token_get_string(&curr_tk));
+        return NULL;
     } else {
         fprintf(stderr, "ERROR (parser): unknown token\n");
-        exit(1);
+        return NULL;
     }
+}
+
+NodeTree *parse(const char *src)
+{
+    Lexer lexer = lexer_create(src);
+    NodeTree *result = expression(&lexer);
+    if (!result) {
+        return NULL;
+    }
+    if (lexer_current(&lexer).kind != TK_EOF) {
+        fprintf(stderr, "ERROR (parser): invalid expression\n");
+        return NULL;
+    }
+    return result;
 }
 
 int main(void)
 {
-    char *source = "4 - (1 / 1)";
-    Lexer lexer = lexer_create(source);
+    char *src = "x + y";
 
-    NodeTree *result = expression(&lexer);
-    if (lexer_next(&lexer).kind != TK_EOF) {
-        fprintf(stderr, "ERROR: smth went wrong\n");
-        exit(1);
-    }
-    printf("%.2f\n", result->eval(result));
+    NodeTree *result = parse(src);
+    if (!result) return 1;
+
+    //printf("%.2f\n", result->eval(result));
+    printf("%s\n", result->print(result));
 
     return 0;
 }
