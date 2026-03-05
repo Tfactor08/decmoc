@@ -13,9 +13,9 @@ F -> Id | Integer | (E) | -F | Func(E)
 #include "lexer.c"
 #include "utils.c"
 
-#define NODETREE_HEAD            \
-    float (*eval)(void *self);   \
-    char  *(*print)(void *self); \
+#define NODETREE_HEAD                   \
+    float (*eval)(void *self, float x); \
+    char  *(*print)(void *self);        \
 
 typedef struct {
     NODETREE_HEAD
@@ -56,7 +56,7 @@ typedef struct {
 #define NODE_BINARY_CREATE_FUNC(name)                                 \
     NodeBinary *node_##name##_create(NodeTree *left, NodeTree *right) \
     {                                                                 \
-        float node_##name##_eval(void *);                             \
+        float node_##name##_eval(void *, float);                      \
         char *node_##name##_print(void *);                            \
         NodeBinary *node = malloc(sizeof(NodeBinary));                \
         node->eval = &node_##name##_eval;                             \
@@ -66,14 +66,14 @@ typedef struct {
         return node;                                                  \
     }                                                                 \
 
-#define NODE_BINARY_EVAL_FUNC(name, operator)  \
-    float node_##name##_eval(void *self)       \
-    {                                          \
-        NodeBinary *node = (NodeBinary *)self; \
-        NodeTree *l = node->left;              \
-        NodeTree *r = node->right;             \
-        return l->eval(l) operator r->eval(r); \
-    }                                          \
+#define NODE_BINARY_EVAL_FUNC(name, operator)        \
+    float node_##name##_eval(void *self, float x)    \
+    {                                                \
+        NodeBinary *node = (NodeBinary *)self;       \
+        NodeTree *l = node->left;                    \
+        NodeTree *r = node->right;                   \
+        return l->eval(l, x) operator r->eval(r, x); \
+    }                                                \
 
 #define NODE_BINARY_PRINT_FUNC(name, operator)                               \
     char *node_##name##_print(void *self)                                    \
@@ -94,7 +94,7 @@ NODE_BINARY_CREATE_FUNC(div);
 
 NodeFunc *node_func_create(NodeTree *arg, FUNC func)
 {
-    float node_func_eval(void *);
+    float node_func_eval(void *, float);
     char *node_func_print(void *);
 
     NodeFunc *node = malloc(sizeof(NodeFunc));
@@ -107,7 +107,7 @@ NodeFunc *node_func_create(NodeTree *arg, FUNC func)
 
 NodeNegate *node_negate_create(NodeTree *arg)
 {
-    float node_negate_eval(void *);
+    float node_negate_eval(void *, float);
     char *node_negate_print(void *);
 
     NodeNegate *node = malloc(sizeof(NodeNegate));
@@ -119,7 +119,7 @@ NodeNegate *node_negate_create(NodeTree *arg)
 
 NodeNumber *node_number_create(float val)
 {
-    float node_number_eval(void *);
+    float node_number_eval(void *, float);
     char *node_number_print(void *);
 
     NodeNumber *node = malloc(sizeof(NodeNumber));
@@ -131,7 +131,7 @@ NodeNumber *node_number_create(float val)
 
 NodeId *node_id_create(char *string)
 {
-    float node_id_eval(void *);
+    float node_id_eval(void *, float);
     char *node_id_print(void *);
 
     NodeId *node = malloc(sizeof(NodeId));
@@ -147,37 +147,35 @@ NODE_BINARY_EVAL_FUNC(sub, -);
 NODE_BINARY_EVAL_FUNC(mult, *);
 NODE_BINARY_EVAL_FUNC(div, /);
 
-float node_func_eval(void *self)
+float node_func_eval(void *self, float x)
 {
     NodeFunc *node = (NodeFunc *)self;
     NodeTree *arg = node->arg;
     FUNC func = node->func;
     if (func == SIN)
-        return sin(arg->eval(arg));
+        return sin(arg->eval(arg, x));
     else if (func == COS)
-        return cos(arg->eval(arg));
+        return cos(arg->eval(arg, x));
     else
         assert(0 && "Unhandled function");
 }
 
-float node_negate_eval(void *self)
+float node_negate_eval(void *self, float x)
 {
     NodeNegate *node = (NodeNegate *)self;
     NodeTree *arg = node->arg;
-    return -(arg->eval(arg));
+    return -(arg->eval(arg, x));
 }
 
-float node_number_eval(void *self)
+float node_number_eval(void *self, float x)
 {
     NodeNumber *node = (NodeNumber *)self;
     return node->val;
 }
 
-float node_id_eval(void *self)
+float node_id_eval(void *self, float x)
 {
-    assert(0 && "TODO: not implemented");
-    NodeId *node = (NodeId *)self;
-    return 0;
+    return x;
 }
 
 NODE_BINARY_PRINT_FUNC(add, +);
@@ -354,15 +352,23 @@ NodeTree *parse(const char *src)
     return result;
 }
 
+float eval(NodeTree *expr, float x)
+{
+    return expr->eval(expr, x);
+}
+
+#if 1
 int main(void)
 {
-    char *src = "x + y";
+    char *src = "sin(x + x*x)";
 
     NodeTree *result = parse(src);
     if (!result) return 1;
 
-    //printf("%.2f\n", result->eval(result));
-    printf("%s\n", result->print(result));
+    //for (float i = -5; i < 5; i += 0.1) 
+    //    printf("%.2f\n", eval(result, i));
+    //printf("%s\n", result->print(result));
 
     return 0;
 }
+#endif

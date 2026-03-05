@@ -1,2 +1,3 @@
--- think over errors handling in the parser;
--- add the remaining operations to the parser.
+-- use arena allocators to manage memory;
+-- add the remaining operations to the parser;
+-- support factors in front of variables and functions (e.g. 2x).
