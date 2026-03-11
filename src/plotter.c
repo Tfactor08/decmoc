@@ -1,7 +1,8 @@
 #include <raylib.h>
+#include <string.h>
 #include <math.h>
 
-#include "parser.c"
+#include "parser.h"
 
 #define WIDTH 800
 #define HEIGHT 600

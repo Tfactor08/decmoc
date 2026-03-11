@@ -4,25 +4,14 @@ T -> P {*|/ P}
 P -> F {^ F}
 F -> Id | Integer | (E) | -F | Func(E)
 */
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <assert.h>
-#include <math.h>
 
 #include "lexer.c"
 #include "arena.c"
 #include "utils.c"
 
+#include "parser.h"
+
 #define INITIAL_MEM (1 << 10)
-
-#define NODETREE_HEAD                   \
-    float (*eval)(void *self, float x); \
-    char  *(*print)(void *self);        \
-
-typedef struct {
-    NODETREE_HEAD
-} NodeTree;
 
 typedef struct {
     NODETREE_HEAD
@@ -380,7 +369,7 @@ void destroy()
     arena_destroy(&arena);
 }
 
-#if 1
+#ifdef PARSER_MAIN
 int main(void)
 {
     char *src = "42 + 69";
