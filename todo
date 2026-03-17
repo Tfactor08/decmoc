@@ -1,5 +1,5 @@
--- add the remaining operations to the parser;
--- add `get` function pointer to the Token struct (to be consistence with print function; maybe so we could even get rid of the assertions?);
--- handle division by zero;
--- handle errors in the arena.c;
--- support factors in front of variables and functions (e.g. 2x).
+-- support factors in front of variables and functions (e.g. 2x);
+-- support removing allocated objects in arena.c (maybe in separate branch?);
+-- handle errors in arena.c;
+-- `1-1` bug;
+-- handle division by zero (done?).

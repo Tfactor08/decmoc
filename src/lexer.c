@@ -14,6 +14,7 @@ Function: sin | cos
 
 #define SIN_STR "sin"
 #define COS_STR "cos"
+#define EXP_STR "exp"
 
 typedef enum {
     TK_ID = 1,
@@ -23,9 +24,9 @@ typedef enum {
     TK_CLOSEP,
     TK_PLUS,
     TK_MINUS,
-    TK_MULT,
+    TK_MUL,
     TK_DIV,
-    TK_POWER,
+    TK_POW,
     TK_FUNC,
     TK_EOF,
     TK_ERROR
@@ -33,7 +34,8 @@ typedef enum {
 
 typedef enum {
     SIN,
-    COS
+    COS,
+    EXP
 } FUNC; 
 
 typedef struct Token Token;
@@ -76,6 +78,9 @@ static void token_print_func(Token *tk)
         case COS:
             printf("Func: %s\n", COS_STR);
             break;
+        case EXP:
+            printf("Func: %s\n", EXP_STR);
+            break;
         default:
             assert(0 && "Unhandled function\n");
     }
@@ -116,7 +121,7 @@ static Token token_create_func(FUNC func)
 
 static Token token_create_literal(TokenKind kind, char val)
 {
-    assert(kind == TK_OPENP || kind == TK_CLOSEP || kind == TK_PLUS || kind == TK_MINUS || kind == TK_MULT || kind == TK_DIV || kind == TK_POWER);
+    assert(kind == TK_OPENP || kind == TK_CLOSEP || kind == TK_PLUS || kind == TK_MINUS || kind == TK_MUL || kind == TK_DIV || kind == TK_POW);
     Token tk = { .kind = kind, .value.c = val, .print = &token_print_literal };
     return tk;
 }
@@ -173,7 +178,7 @@ char *token_get_string(Token *tk)
 
 char token_get_literal(Token *tk)
 {
-    assert(tk->kind == TK_OPENP || tk->kind == TK_CLOSEP || tk->kind == TK_PLUS || tk->kind == TK_MINUS || tk->kind == TK_MULT || tk->kind == TK_DIV || tk->kind == TK_POWER);
+    assert(tk->kind == TK_OPENP || tk->kind == TK_CLOSEP || tk->kind == TK_PLUS || tk->kind == TK_MINUS || tk->kind == TK_MUL || tk->kind == TK_DIV || tk->kind == TK_POW);
     return tk->value.c;
 }
 
@@ -235,6 +240,8 @@ static Token token_next(Lexer *l)
             return token_create_func(SIN);
         else if (strcmp(string, COS_STR) == 0)
             return token_create_func(COS);
+        else if (strcmp(string, EXP_STR) == 0)
+            return token_create_func(EXP);
         else
             return token_create_string(TK_ID, string);
     } else if (c == '+') {
@@ -245,13 +252,13 @@ static Token token_next(Lexer *l)
         return token_create_literal(TK_MINUS, c);
     } else if (c == '*') {
         l->pos += 1;
-        return token_create_literal(TK_MULT, c);
+        return token_create_literal(TK_MUL, c);
     } else if (c == '/') {
         l->pos += 1;
         return token_create_literal(TK_DIV, c);
     } else if (c == '^') {
         l->pos += 1;
-        return token_create_literal(TK_POWER, c);
+        return token_create_literal(TK_POW, c);
     } else if (c == '(') {
         l->pos += 1;
         return token_create_literal(TK_OPENP, c);

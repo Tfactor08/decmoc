@@ -3,6 +3,7 @@ E -> T {+|- T}
 T -> P {*|/ P}
 P -> F {^ F}
 F -> Id | Number | (E) | -F | Func(E)
+Func: sin | cos | exp
 */
 
 #include "lexer.c"
@@ -11,7 +12,7 @@ F -> Id | Number | (E) | -F | Func(E)
 
 #include "parser.h"
 
-#define INITIAL_MEM (1 << 10)
+#define ARENA_INITIAL_CAP (1 << 10)
 
 typedef struct {
     NODETREE_HEAD
@@ -42,18 +43,18 @@ typedef struct {
 
 static Arena arena;
 
-#define NODE_BINARY_CREATE_FUNC(name)                                 \
-    NodeBinary *node_##name##_create(NodeTree *left, NodeTree *right) \
-    {                                                                 \
-        float node_##name##_eval(void *, float);                      \
-        char *node_##name##_print(void *);                            \
-        NodeBinary *node = PUSH_STRUCT(&arena, NodeBinary);           \
-        node->eval = &node_##name##_eval;                             \
-        node->print = &node_##name##_print;                           \
-        node->left = left;                                            \
-        node->right = right;                                          \
-        return node;                                                  \
-    }                                                                 \
+#define NODE_BINARY_CREATE_FUNC(name)                                        \
+    static NodeBinary *node_##name##_create(NodeTree *left, NodeTree *right) \
+    {                                                                        \
+        float node_##name##_eval(void *, float);                             \
+        char *node_##name##_print(void *);                                   \
+        NodeBinary *node = PUSH_STRUCT(&arena, NodeBinary);                  \
+        node->eval = &node_##name##_eval;                                    \
+        node->print = &node_##name##_print;                                  \
+        node->left = left;                                                   \
+        node->right = right;                                                 \
+        return node;                                                         \
+    }                                                                        \
 
 #define NODE_BINARY_EVAL_FUNC(name, operator)        \
     float node_##name##_eval(void *self, float x)    \
@@ -78,10 +79,11 @@ static Arena arena;
 
 NODE_BINARY_CREATE_FUNC(add);
 NODE_BINARY_CREATE_FUNC(sub);
-NODE_BINARY_CREATE_FUNC(mult);
+NODE_BINARY_CREATE_FUNC(mul);
 NODE_BINARY_CREATE_FUNC(div);
+NODE_BINARY_CREATE_FUNC(pow);
 
-NodeFunc *node_func_create(NodeTree *arg, FUNC func)
+static NodeFunc *node_func_create(NodeTree *arg, FUNC func)
 {
     float node_func_eval(void *, float);
     char *node_func_print(void *);
@@ -94,7 +96,7 @@ NodeFunc *node_func_create(NodeTree *arg, FUNC func)
     return node;
 }
 
-NodeNegate *node_negate_create(NodeTree *arg)
+static NodeNegate *node_negate_create(NodeTree *arg)
 {
     float node_negate_eval(void *, float);
     char *node_negate_print(void *);
@@ -106,7 +108,7 @@ NodeNegate *node_negate_create(NodeTree *arg)
     return node;
 }
 
-NodeNumber *node_number_create(float val)
+static NodeNumber *node_number_create(float val)
 {
     float node_number_eval(void *, float);
     char *node_number_print(void *);
@@ -118,7 +120,7 @@ NodeNumber *node_number_create(float val)
     return node;
 }
 
-NodeId *node_id_create(char *string)
+static NodeId *node_id_create(char *string)
 {
     float node_id_eval(void *, float);
     char *node_id_print(void *);
@@ -133,8 +135,24 @@ NodeId *node_id_create(char *string)
 
 NODE_BINARY_EVAL_FUNC(add, +);
 NODE_BINARY_EVAL_FUNC(sub, -);
-NODE_BINARY_EVAL_FUNC(mult, *);
-NODE_BINARY_EVAL_FUNC(div, /);
+NODE_BINARY_EVAL_FUNC(mul, *);
+
+float node_div_eval(void *self, float x)
+{
+    NodeBinary *node = (NodeBinary *)self;
+    NodeTree *l = node->left;
+    NodeTree *r = node->right;
+    if (x == 0) x = ZERO; // avoid 0/0 indetermination
+    return l->eval(l, x) / r->eval(r, x);
+}
+
+float node_pow_eval(void *self, float x)
+{
+    NodeBinary *node = (NodeBinary *)self;
+    NodeTree *l = node->left;
+    NodeTree *r = node->right;
+    return powf(l->eval(l, x), r->eval(r, x));
+}
 
 float node_func_eval(void *self, float x)
 {
@@ -145,6 +163,8 @@ float node_func_eval(void *self, float x)
         return sin(arg->eval(arg, x));
     else if (func == COS)
         return cos(arg->eval(arg, x));
+    else if (func == EXP)
+        return exp(arg->eval(arg, x));
     else
         assert(0 && "Unhandled function");
 }
@@ -169,8 +189,9 @@ float node_id_eval(void *self, float x)
 
 NODE_BINARY_PRINT_FUNC(add, +);
 NODE_BINARY_PRINT_FUNC(sub, -);
-NODE_BINARY_PRINT_FUNC(mult, *);
+NODE_BINARY_PRINT_FUNC(mul, *);
 NODE_BINARY_PRINT_FUNC(div, /);
+NODE_BINARY_PRINT_FUNC(pow, ^);
 
 char *node_func_print(void *self)
 {
@@ -179,10 +200,13 @@ char *node_func_print(void *self)
     char *func_str;
     switch (node->func) {
         case SIN:
-            func_str = "sin";
+            func_str = SIN_STR;
             break;
         case COS:
-            func_str = "cos";
+            func_str = COS_STR;
+            break;
+        case EXP:
+            func_str = EXP_STR;
             break;
         default:
             assert(0 && "Unhandled function");
@@ -218,7 +242,7 @@ char *node_id_print(void *self)
     return node->string;
 }
 
-NodeTree *expression(Lexer *l)
+static NodeTree *expression(Lexer *l)
 {
     NodeTree *term(Lexer *);
 
@@ -243,21 +267,39 @@ NodeTree *expression(Lexer *l)
 
 NodeTree *term(Lexer *l)
 {
+    NodeTree *primary(Lexer *);
+
+    NodeTree *a = primary(l);
+    if (!a) return NULL;
+    while (true) {
+        if (lexer_current(l).kind == TK_MUL) {
+            lexer_next(l);
+            NodeTree *b = primary(l);
+            if (!b) return NULL;
+            a = (NodeTree *)node_mul_create(a, b);
+        } else if (lexer_current(l).kind == TK_DIV) {
+            lexer_next(l);
+            NodeTree *b = primary(l);
+            if (!b) return NULL;
+            a = (NodeTree *)node_div_create(a, b);
+        } else {
+            return a;
+        }
+    }
+}
+
+NodeTree *primary(Lexer *l)
+{
     NodeTree *factor(Lexer *);
 
     NodeTree *a = factor(l);
     if (!a) return NULL;
     while (true) {
-        if (lexer_current(l).kind == TK_MULT) {
+        if (lexer_current(l).kind == TK_POW) {
             lexer_next(l);
             NodeTree *b = factor(l);
             if (!b) return NULL;
-            a = (NodeTree *)node_mult_create(a, b);
-        } else if (lexer_current(l).kind == TK_DIV) {
-            lexer_next(l);
-            NodeTree *b = factor(l);
-            if (!b) return NULL;
-            a = (NodeTree *)node_div_create(a, b);
+            a = (NodeTree *)node_pow_create(a, b);
         } else {
             return a;
         }
@@ -305,17 +347,9 @@ NodeTree *factor(Lexer *l)
         if (!e) return NULL;
         FUNC func_kind = token_get_func(&func_tk);
         func = node_func_create(e, func_kind);
-        //char *func_str = token_get_string(&func_tk);
-        // TODO: inconsistency: in the lexer function token is defined by the corresponding string but in the parser
-        // by the FUNC enum => we have to compare strings thus creating an overhead
-        //if (strcmp(func_str, SIN_STR) == 0)
-        //    func = node_func_create(e, SIN);
-        //else if (strcmp(func_str, COS_STR) == 0)
-        //    func = node_func_create(e, COS);
-        //else
-        //    assert(0 && "Unhandled function");
         if (lexer_current(l).kind != TK_CLOSEP) {
-            fprintf(stderr, "Unmatching ) for function");
+            printf("%d\n", lexer_current(l).kind);
+            fprintf(stderr, "ERROR (parser): unmatching ) for function\n");
             return NULL;
         }
         lexer_next(l);
@@ -327,17 +361,17 @@ NodeTree *factor(Lexer *l)
         fprintf(stderr, "ERROR (parser): unknown token\n");
         return NULL;
     }
+    return NULL; // Unrechable but silences warning
 }
 
 NodeTree *parse(const char *src)
 {
     if (!arena.current)
-        arena_create(&arena, INITIAL_MEM);
+        arena_create(&arena, ARENA_INITIAL_CAP);
     Lexer lexer = lexer_create(src);
     NodeTree *result = expression(&lexer);
-    if (!result) {
+    if (!result)
         return NULL;
-    }
     if (lexer_current(&lexer).kind != TK_EOF) {
         fprintf(stderr, "ERROR (parser): invalid expression\n");
         return NULL;
@@ -363,19 +397,13 @@ void destroy()
 #ifdef PARSER_MAIN
 int main(void)
 {
-    char *src = "-cos(x) + y / 2";
+    char *src = "2x";
 
     NodeTree *result = parse(src);
     if (!result) return 1;
 
     printf("%s\n", print(result));
     printf("%.2f\n", eval(result, 0));
-
-    //NodeTree *result2 = parse("cos(0)");
-    //if (!result2) return 1;
-
-    //printf("%s\n", print(result2));
-    //printf("%.2f\n", eval(result2, 0));
 
     destroy();
 
