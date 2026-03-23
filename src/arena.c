@@ -94,17 +94,6 @@ void arena_destroy(Arena *arena)
     arena->current = NULL;
 }
 
-void arena_destroy_new(Arena *arena)
-{
-    Region *region = arena->current;
-    while (region) {
-        Region *prev = region->prev;
-        free(region);
-        region = prev;
-    }
-    arena->current = NULL;
-}
-
 #if 0
 int main()
 {

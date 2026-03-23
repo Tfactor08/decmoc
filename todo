@@ -1,5 +1,13 @@
--- support factors in front of variables and functions (e.g. 2x);
--- support removing allocated objects in arena.c (maybe in separate branch?);
--- handle errors in arena.c;
+-- free allocated strings for printing as well;
+-- rename node members so naming becomes consistent (e.g. val and arg with string);
+-- handle potential errors from malloc and free;
+-- get around of the inabilty to use static specifier for internal function;
+-- get rid from arena?;
+-- use vtables;
+-- support factors in front of variables and functions (e.g. 2x) ['fact' branch];
 -- `1-1` bug;
 -- handle division by zero (done?).
+
+In Question:
+-- support removing allocated objects in arena.c ['arena' branch];
+-- handle errors in arena.c.

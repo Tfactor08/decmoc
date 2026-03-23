@@ -48,9 +48,11 @@ static Arena arena;
     {                                                                        \
         float node_##name##_eval(void *, float);                             \
         char *node_##name##_print(void *);                                   \
-        NodeBinary *node = PUSH_STRUCT(&arena, NodeBinary);                  \
+        void node_binary_free(void *);                                       \
+        NodeBinary *node = malloc(sizeof(NodeBinary));                       \
         node->eval = &node_##name##_eval;                                    \
         node->print = &node_##name##_print;                                  \
+        node->free = &node_binary_free;                                      \
         node->left = left;                                                   \
         node->right = right;                                                 \
         return node;                                                         \
@@ -59,7 +61,7 @@ static Arena arena;
 #define NODE_BINARY_EVAL_FUNC(name, operator)        \
     float node_##name##_eval(void *self, float x)    \
     {                                                \
-        NodeBinary *node = (NodeBinary *)self;       \
+        NodeBinary *node = (NodeBinary *) self;      \
         NodeTree *l = node->left;                    \
         NodeTree *r = node->right;                   \
         return l->eval(l, x) operator r->eval(r, x); \
@@ -68,7 +70,7 @@ static Arena arena;
 #define NODE_BINARY_PRINT_FUNC(name, operator)                               \
     char *node_##name##_print(void *self)                                    \
     {                                                                        \
-        NodeBinary *node = (NodeBinary *)self;                               \
+        NodeBinary *node = (NodeBinary *) self;                              \
         char *right_string = node->right->print(node->right);                \
         char *left_string = node->left->print(node->left);                   \
         size_t result_len = strlen(left_string) + strlen(right_string) + 6;  \
@@ -87,10 +89,12 @@ static NodeFunc *node_func_create(NodeTree *arg, FUNC func)
 {
     float node_func_eval(void *, float);
     char *node_func_print(void *);
+    void node_func_free(void *);
 
-    NodeFunc *node = PUSH_STRUCT(&arena, NodeFunc);
+    NodeFunc *node = malloc(sizeof(NodeFunc));
     node->eval = &node_func_eval;
     node->print = &node_func_print;
+    node->free = &node_func_free;
     node->func = func;
     node->arg = arg;
     return node;
@@ -100,10 +104,12 @@ static NodeNegate *node_negate_create(NodeTree *arg)
 {
     float node_negate_eval(void *, float);
     char *node_negate_print(void *);
+    void node_negate_free(void *);
 
-    NodeNegate *node = PUSH_STRUCT(&arena, NodeNegate);
+    NodeNegate *node = malloc(sizeof(NodeNegate));
     node->eval = &node_negate_eval;
     node->print = &node_negate_print;
+    node->free = &node_negate_free;
     node->arg = arg;
     return node;
 }
@@ -112,10 +118,12 @@ static NodeNumber *node_number_create(float val)
 {
     float node_number_eval(void *, float);
     char *node_number_print(void *);
+    void node_number_free(void *);
 
-    NodeNumber *node = PUSH_STRUCT(&arena, NodeNumber);
+    NodeNumber *node = malloc(sizeof(NodeNumber));
     node->eval = &node_number_eval;
     node->print = &node_number_print;
+    node->free = &node_number_free;
     node->val = val;
     return node;
 }
@@ -124,10 +132,12 @@ static NodeId *node_id_create(char *string)
 {
     float node_id_eval(void *, float);
     char *node_id_print(void *);
+    void node_id_free(void *);
 
-    NodeId *node = PUSH_STRUCT(&arena, NodeId);
+    NodeId *node = malloc(sizeof(NodeId));
     node->eval = &node_id_eval;
     node->print = &node_id_print;
+    node->free = &node_id_free;
     node->string = PUSH_STRING(&arena, strlen(string) + 1);
     strcpy(node->string, string);
     return node;
@@ -137,18 +147,22 @@ NODE_BINARY_EVAL_FUNC(add, +);
 NODE_BINARY_EVAL_FUNC(sub, -);
 NODE_BINARY_EVAL_FUNC(mul, *);
 
+// node_div_eval is implemented separately from the common NODE_BINARY_EVAL
+// since it must be realized in a special way 
 float node_div_eval(void *self, float x)
 {
-    NodeBinary *node = (NodeBinary *)self;
+    NodeBinary *node = (NodeBinary *) self;
     NodeTree *l = node->left;
     NodeTree *r = node->right;
     if (x == 0) x = ZERO; // avoid 0/0 indetermination
     return l->eval(l, x) / r->eval(r, x);
 }
 
+// node_pow_eval is implemented separately from the common NODE_BINARY_EVAL
+// since it must be realized in a special way 
 float node_pow_eval(void *self, float x)
 {
-    NodeBinary *node = (NodeBinary *)self;
+    NodeBinary *node = (NodeBinary *) self;
     NodeTree *l = node->left;
     NodeTree *r = node->right;
     return powf(l->eval(l, x), r->eval(r, x));
@@ -156,7 +170,7 @@ float node_pow_eval(void *self, float x)
 
 float node_func_eval(void *self, float x)
 {
-    NodeFunc *node = (NodeFunc *)self;
+    NodeFunc *node = (NodeFunc *) self;
     NodeTree *arg = node->arg;
     FUNC func = node->func;
     if (func == SIN)
@@ -171,14 +185,14 @@ float node_func_eval(void *self, float x)
 
 float node_negate_eval(void *self, float x)
 {
-    NodeNegate *node = (NodeNegate *)self;
+    NodeNegate *node = (NodeNegate *) self;
     NodeTree *arg = node->arg;
     return -(arg->eval(arg, x));
 }
 
 float node_number_eval(void *self, float x)
 {
-    NodeNumber *node = (NodeNumber *)self;
+    NodeNumber *node = (NodeNumber *) self;
     return node->val;
 }
 
@@ -195,7 +209,7 @@ NODE_BINARY_PRINT_FUNC(pow, ^);
 
 char *node_func_print(void *self)
 {
-    NodeFunc *node = (NodeFunc *)self;
+    NodeFunc *node = (NodeFunc *) self;
     char *arg_string = node->arg->print(node->arg);
     char *func_str;
     switch (node->func) {
@@ -219,7 +233,7 @@ char *node_func_print(void *self)
 
 char *node_negate_print(void *self)
 {
-    NodeNegate *node = (NodeNegate *)self;
+    NodeNegate *node = (NodeNegate *) self;
     char *arg_string = node->arg->print(node->arg);
     size_t result_len = strlen(arg_string) + 4;
     char *result = PUSH_STRING(&arena, result_len);
@@ -229,7 +243,7 @@ char *node_negate_print(void *self)
 
 char *node_number_print(void *self)
 {
-    NodeNumber *node = (NodeNumber *)self;
+    NodeNumber *node = (NodeNumber *) self;
     size_t result_len = int_len((int)node->val) + 4;
     char *result = PUSH_STRING(&arena, result_len);
     sprintf(result, "%.2f", node->val);
@@ -238,8 +252,43 @@ char *node_number_print(void *self)
 
 char *node_id_print(void *self)
 {
-    NodeId *node = (NodeId *)self;
+    NodeId *node = (NodeId *) self;
     return node->string;
+}
+
+void node_binary_free(void *self)
+{
+    NodeBinary *node = (NodeBinary *) self;
+    node->left->free(node->left);
+    node->right->free(node->right);
+    free(node);
+}
+
+void node_func_free(void *self)
+{
+    NodeFunc *node = (NodeFunc *) self;
+    node->arg->free(node);
+    free(node);
+}
+
+void node_negate_free(void *self)
+{
+    NodeNegate *node = (NodeNegate *) self;
+    node->arg->free(node->arg);
+    free(node);
+}
+
+void node_id_free(void *self)
+{
+    NodeId *node = (NodeId *) self;
+    free(node->string);
+    free(node);
+}
+
+void node_number_free(void *self)
+{
+    NodeNumber *node = (NodeNumber *) self;
+    free(node);
 }
 
 static NodeTree *expression(Lexer *l)
@@ -361,10 +410,10 @@ NodeTree *factor(Lexer *l)
         fprintf(stderr, "ERROR (parser): unknown token\n");
         return NULL;
     }
-    return NULL; // Unrechable but silences warning
+    return NULL; // Unrechable but silences the warning
 }
 
-NodeTree *parse(const char *src)
+NodeTree *tree_parse(const char *src)
 {
     if (!arena.current)
         arena_create(&arena, ARENA_INITIAL_CAP);
@@ -379,33 +428,33 @@ NodeTree *parse(const char *src)
     return result;
 }
 
-char *print(NodeTree *tree)
+char *tree_print(NodeTree *tree)
 {
     return tree->print(tree);
 }
 
-float eval(NodeTree *tree, float x)
+float tree_eval(NodeTree *tree, float x)
 {
     return tree->eval(tree, x);
 }
 
-void destroy()
+void tree_free(NodeTree *tree)
 {
-    arena_destroy(&arena);
+    tree->free(tree);
 }
 
 #ifdef PARSER_MAIN
 int main(void)
 {
-    char *src = "2x";
+    char *src = "2 + 2";
 
-    NodeTree *result = parse(src);
+    NodeTree *result = tree_parse(src);
     if (!result) return 1;
 
-    printf("%s\n", print(result));
-    printf("%.2f\n", eval(result, 0));
+    //printf("%s\n", tree_print(result));
+    printf("%.2f\n", tree_eval(result, 0));
 
-    destroy();
+    tree_free(result);
 
     return 0;
 }

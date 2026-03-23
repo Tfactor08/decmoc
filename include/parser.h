@@ -9,10 +9,19 @@
 #include <float.h>
 
 #define NODETREE_HEAD                   \
+    void (*free)(void *self);           \
     float (*eval)(void *self, float x); \
     char  *(*print)(void *self);        \
 
 #define ZERO (1e-8)
+
+//typedef enum {
+//    NODE_BINARY = 1,
+//    NODE_FUNC,
+//    NODE_NEGATE,
+//    NODE_ID,
+//    NODE_NUMBER
+//} NodeKind; 
 
 typedef struct {
     NODETREE_HEAD
