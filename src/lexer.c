@@ -1,7 +1,7 @@
 /*
 Id:       {char}+
 Number:   {digit}+(.{digit}+)? | .{digit}+
-Function: sin | cos
+Function: sin | cos | exp
 */
 
 #include <stdio.h>

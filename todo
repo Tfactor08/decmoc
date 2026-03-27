@@ -1,21 +1,15 @@
--- use vtables;
--- think over managing collection of trees (dynamic array?);
--- use separate struct member as a NodeTree header instead of macro?;
--- think over string allocations;
--- rename node members so naming becomes consistent (e.g. val and arg with string);
 -- handle potential errors from malloc and free;
--- get around of the inabilty to use static specifier for internal function;
--- get rid from arena?;
--- support factors in front of variables and functions (e.g. 2x) ['fact' branch];
+-- support factors in front of variables and functions (e.g. 2x) ['factor' branch];
 -- `1-1` bug;
 -- handle division by zero (done?).
 
 In Question:
 -- support removing allocated objects in arena.c ['arena' branch];
--- handle errors in arena.c.
+-- handle errors in arena.c;
+-- get rid from arena?.
 
 To be Mentioned in README:
 -- recursive descent parsing and grammar;
--- polymorphic code in C: why it's useful;
--- decision (so far) to give up on using arena allocators;
+-- polymorphic code in C: how and why it's useful;
+-- the decision (so far) to give up on using arena allocators;
 -- partial unity builds and Makefiles.
