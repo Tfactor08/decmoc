@@ -22,6 +22,14 @@ Func: sin | cos | exp
 #define FLOAT_PRECISION "2"
 #define PRINT_BUFFER_CAP (1 << 8)
 
+#define MALLOC_CHECK(ptr)                                                                    \
+    do {                                                                                     \
+        if (!ptr) {                                                                          \
+            fprintf(stderr, "ERROR (parser): malloc failed at %s:%d\n", __FILE__, __LINE__); \
+            exit(EXIT_FAILURE);                                                              \
+        }                                                                                    \
+    } while (0)
+
 typedef struct {
     NODETREE_HEAD
     NodeTree *left;
@@ -53,11 +61,12 @@ typedef struct {
     static NodeBinary *node_##name##_create(NodeTree *left, NodeTree *right) \
     {                                                                        \
         NodeBinary *node = malloc(sizeof(NodeBinary));                       \
+        MALLOC_CHECK(node);                                                  \
         node->vtable = &node_##name##_vtable;                                \
         node->left = left;                                                   \
         node->right = right;                                                 \
         return node;                                                         \
-    }                                                                        \
+    }
 
 #define NODE_BINARY_EVAL_FUNC(name, operator)                        \
     static float node_##name##_eval(void *self, float x)             \
@@ -66,20 +75,20 @@ typedef struct {
         NodeTree *l = node->left;                                    \
         NodeTree *r = node->right;                                   \
         return l->vtable->eval(l, x) operator r->vtable->eval(r, x); \
-    }                                                                \
+    }
 
 #define NODE_BINARY_PRINT_FUNC(name, operator)                            \
     static void node_##name##_print(void *self, char *buffer)             \
     {                                                                     \
         NodeBinary *node = self;                                          \
-        char left_buf[PRINT_BUFFER_CAP];                                  \
+        char left_buf[PRINT_BUFFER_CAP] = {0};                            \
         node->left->vtable->print(node->left, left_buf);                  \
-        char right_buf[PRINT_BUFFER_CAP];                                 \
+        char right_buf[PRINT_BUFFER_CAP] = {0};                           \
         node->right->vtable->print(node->right, right_buf);               \
         size_t buf_left_cap = PRINT_BUFFER_CAP - (strlen(buffer) + 1);    \
         assert(buf_left_cap >= strlen(left_buf) + strlen(right_buf) + 5); \
         sprintf(buffer, "(%s " #operator " %s)", left_buf, right_buf);    \
-    }                                                                     \
+    }
 
 /* --- EVAL FUNCTIONS --- */
 
@@ -241,7 +250,7 @@ static void node_number_free(void *self)
         .print = node_##node##_print,      \
         .eval = node_##node##_eval,        \
         .free = node_##node##_free         \
-    };                                     \
+    };
 
 // Specific macro for the Binary node is needed since the free pointer differs
 #define NODE_BINARY_VTABLE_STRUCT(node)    \
@@ -249,7 +258,7 @@ static void node_number_free(void *self)
         .print = node_##node##_print,      \
         .eval = node_##node##_eval,        \
         .free = node_binary_free           \
-    };                                     \
+    };
 
 NODE_BINARY_VTABLE_STRUCT(add);
 NODE_BINARY_VTABLE_STRUCT(sub);
@@ -273,6 +282,7 @@ NODE_BINARY_CREATE_FUNC(pow);
 static NodeFunc *node_func_create(NodeTree *arg, FUNC func)
 {
     NodeFunc *node = malloc(sizeof(NodeFunc));
+    MALLOC_CHECK(node);
     node->vtable = &node_func_vtable;
     node->func = func;
     node->argument = arg;
@@ -282,6 +292,7 @@ static NodeFunc *node_func_create(NodeTree *arg, FUNC func)
 static NodeNegate *node_negate_create(NodeTree *arg)
 {
     NodeNegate *node = malloc(sizeof(NodeNegate));
+    MALLOC_CHECK(node);
     node->vtable = &node_negate_vtable;
     node->argument = arg;
     return node;
@@ -290,6 +301,7 @@ static NodeNegate *node_negate_create(NodeTree *arg)
 static NodeNumber *node_number_create(float val)
 {
     NodeNumber *node = malloc(sizeof(NodeNumber));
+    MALLOC_CHECK(node);
     node->vtable = &node_number_vtable;
     node->value = val;
     return node;
@@ -298,6 +310,7 @@ static NodeNumber *node_number_create(float val)
 static NodeId *node_id_create(char *string)
 {
     NodeId *node = malloc(sizeof(NodeId));
+    MALLOC_CHECK(node);
     node->vtable = &node_id_vtable;
     node->string = strdup(string);
     return node;
@@ -440,7 +453,7 @@ NodeTree *tree_parse(const char *src)
 
 void tree_print(NodeTree *tree)
 {
-    char buffer[PRINT_BUFFER_CAP];
+    char buffer[PRINT_BUFFER_CAP] = {0};
     tree->vtable->print(tree, buffer);
     printf("%s\n", buffer);
 }
@@ -458,7 +471,7 @@ void tree_free(NodeTree *tree)
 #ifdef PARSER_MAIN
 int main(void)
 {
-    char *src = "sin(1 + 2 * 3)";
+    char *src = "1 + 2";
 
     NodeTree *result = tree_parse(src);
     if (!result) return 1;

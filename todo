@@ -1,4 +1,3 @@
--- handle potential errors from malloc and free;
 -- support factors in front of variables and functions (e.g. 2x) ['factor' branch];
 -- `1-1` bug;
 -- handle division by zero (done?).
