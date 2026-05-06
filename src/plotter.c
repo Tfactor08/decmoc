@@ -9,8 +9,11 @@
 
 #define WIDTH 800
 #define HEIGHT 600
-#define BACKGROUND RAYWHITE
-#define FOREGROUND BLACK
+#define GRID_SIZE 80
+#define BACKGROUND WHITE
+#define FOREGROUND (Color) { 0x2e, 0x2e, 0x2e, 0xff }
+#define GRID_COLOR1 (Color) { 0xb8, 0xb8, 0xb8, 0xff }
+#define GRID_COLOR2 (Color) { 0xe7, 0xe7, 0xe7, 0xff }
 
 #define MAX_TREES (2 << 4)
 #define STEP 0.005
@@ -32,6 +35,18 @@ Vector2 Screen(float x, float y, float scale)
         .x = (x + scale)/(2*scale) * WIDTH,
         .y = (1 - (y + scale)/(2*scale)) * HEIGHT
     };
+}
+
+// Draw a grid in the center of the screen
+void DrawGridField(int grid_size, Color color)
+{
+    int offset_x = (WIDTH  / 2) % grid_size; // the amount of pixels need to be right shifted
+    int offset_y = (HEIGHT / 2) % grid_size; // the amount of pixels need to be up shifted
+
+    for (int x = offset_x; x <= WIDTH; x += grid_size)
+        DrawLine(x, 0, x, HEIGHT, color);
+    for (int y = offset_y; y <= HEIGHT; y += grid_size)
+        DrawLine(0, y, WIDTH, y, color);
 }
 
 void DrawArrow(Vector2 start, Vector2 end, float size, Color color)
@@ -79,7 +94,7 @@ float GetCurrentScale()
 {
     static float scale = 1;
     static float wheel = 0;
-    if (wheel = GetMouseWheelMove()) {
+    if ((wheel = GetMouseWheelMove())) {
         scale += -wheel/2;
         ClearBackground(BACKGROUND);
     }
@@ -96,12 +111,15 @@ int main(int argc, char *argv[])
     RenderTexture2D axesTexture = CreateAxesTexture();
 
     float scale = GetCurrentScale();
-    float wheel;
 
     while (!WindowShouldClose()) {
         BeginDrawing();
-            ClearBackground(RAYWHITE);
+            ClearBackground(BACKGROUND);
+            // TODO: move to texture (for now)
+            DrawGridField(GRID_SIZE / 4, GRID_COLOR2);
+            DrawGridField(GRID_SIZE, GRID_COLOR1);
             DrawAxes(axesTexture);
+
             scale = GetCurrentScale();
             DrawGraphs(&treesBuf, scale);
         EndDrawing();
