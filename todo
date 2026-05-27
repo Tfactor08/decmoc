@@ -1,8 +1,10 @@
--- plotter:
+-- Plotter:
     -- add visuals for the axes (numbers, labels, etc.);
+    -- add movement across the grid;
     -- think over the method of accepting the user input;
-    -- bug: zooming in doesn't work;
-    -- make graphs lines thicker.
+    -- bug: zooming in doesn't work.
+-- Parser:
+    -- maybe using trees for expressions is too inefficient, what about stack-based parsing?
 
 To be Mentioned in README:
 -- recursive descent parsing and grammar;

@@ -14,22 +14,24 @@
 #define FOREGROUND (Color) { 0x2e, 0x2e, 0x2e, 0xff }
 #define GRID_COLOR1 (Color) { 0xb8, 0xb8, 0xb8, 0xff }
 #define GRID_COLOR2 (Color) { 0xe7, 0xe7, 0xe7, 0xff }
+#define LINE_THICKNESS 3
+#define ARROW_SIZE 8
 
 #define MAX_TREES (2 << 4)
-#define STEP 0.005
+#define STEP 0.2
 
 typedef struct {
     NodeTree *trees[MAX_TREES];
     size_t count;
-} TreesBuffer; 
+} ExprsBuffer; 
 
-TreesBuffer ParseInputTrees(int argc, char *argv[]);
+float scale = 1, offsetX = 0, offsetY = 0;
 
 Color graphColors[] = { RED, GREEN, PURPLE };
 const size_t graphColorsCount = sizeof(graphColors) / sizeof(graphColors[0]);
 
-// Convert coordinates in the [-1, 1] range to the corresponding screen coordinates 
-Vector2 Screen(float x, float y, float scale)
+/* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates */
+Vector2 Screen(float x, float y)
 {
     return (Vector2) {
         .x = (x + scale)/(2*scale) * WIDTH,
@@ -37,106 +39,129 @@ Vector2 Screen(float x, float y, float scale)
     };
 }
 
-// Draw a grid in the center of the screen
+/* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates (vector version) */
+Vector2 ScreenV(Vector2 *p)
+{
+    return (Vector2) {
+        .x = (p->x + scale)/(2*scale) * WIDTH,
+        .y = (1 - (p->y + scale)/(2*scale)) * HEIGHT
+    };
+}
+
+// TODO: this version of the function doesn't respect the scale at all.
+//       We can't keep this version since in that case the grid movement
+//       won't be aligned with the graphs.
+//       Actually, calling the Screen function here seems irrational since
+//       the coordinates are in the screen range already. But that's the
+//       only way manage the scaling atm.
+/* Draw a grid in the center of the screen (if the input offsets are zero) */
 void DrawGridField(int grid_size, Color color)
 {
-    int offset_x = (WIDTH  / 2) % grid_size; // the amount of pixels need to be right shifted
-    int offset_y = (HEIGHT / 2) % grid_size; // the amount of pixels need to be up shifted
+    // the amount of pixels need to be right shifted
+    //int offsetX = ((WIDTH  / 2) + offsetX) % grid_size;
+    // the amount of pixels need to be up shifted
+    //int offsetY = ((HEIGHT / 2) + offsetY) % grid_size;
 
-    for (int x = offset_x; x <= WIDTH; x += grid_size)
-        DrawLine(x, 0, x, HEIGHT, color);
-    for (int y = offset_y; y <= HEIGHT; y += grid_size)
-        DrawLine(0, y, WIDTH, y, color);
+    //DrawLine(x, 0, x, HEIGHT, color);
+    for (int x = offsetX; x <= WIDTH; x += grid_size)
+        DrawLineV(Screen(x, 0), Screen(x, HEIGHT), color);
+    //DrawLine(0, y, WIDTH, y, color);
+    for (int y = offsetY; y <= HEIGHT; y += grid_size)
+        DrawLineV(Screen(0, y), Screen(WIDTH, y), color);
 }
 
-void DrawArrow(Vector2 start, Vector2 end, float size, Color color)
+void DrawAxes()
 {
-    Vector2 dir = Vec2Normalize(Vec2Subtract(end, start));
-    Vector2 perp = (Vector2) { -dir.y, dir.x };
-    
-    Vector2 p1 = end;
-    Vector2 p2 = Vec2Subtract(end, Vec2Scale(Vec2Add(dir, perp), size));
-    Vector2 p3 = Vec2Subtract(end, Vec2Scale(Vec2Subtract(dir, perp), size));
-    
-    DrawLineEx(start, end, 2, color);
-    DrawTriangle(p1, p2, p3, color);
+    // horizontal axis
+    DrawLineEx(Screen(-scale, 0 + -offsetY),
+               Screen(scale, 0 + -offsetY),
+               LINE_THICKNESS, FOREGROUND);
+    // vertical axis
+    DrawLineEx(Screen(0 + -offsetX, -scale),
+               Screen(0 + -offsetX, scale),
+               LINE_THICKNESS, FOREGROUND);
 }
 
-RenderTexture2D CreateAxesTexture()
+void DrawGraphs(ExprsBuffer *exprsBuffer)
 {
-    RenderTexture2D texture = LoadRenderTexture(WIDTH, HEIGHT);
-    BeginTextureMode(texture);
-        DrawArrow(Screen(-1, 0, 1), Screen(1, 0, 1), 8, FOREGROUND);
-        DrawArrow(Screen(0, 1, 1), Screen(0, -1, 1), 8, FOREGROUND);
-    EndTextureMode();
-    return texture;
-}
+    float a = -scale + offsetX;
+    float b = scale + offsetX;
+    for (size_t i = 0; i < exprsBuffer->count; i++) {
+        // We need to convert the shifted x coordinates back to -scale..scale range
+        // so the Screen* functions can draw them correctly.
+        //
+        // Steps required:
+        // 1) normalize x to be in 0..1 range:
+        // n = (x - a) / (b - a) [how far x from the start / the range length]
+        // 2) now map to the -c..c range:
+        // r = -c + n*2c [first, 0..2c, then -c..c]
 
-void DrawAxes(RenderTexture2D axesTexture)
-{
-    DrawTextureRec(axesTexture.texture,
-                   (Rectangle) { 0, 0, WIDTH, HEIGHT },
-                   (Vector2) { 0, 0 }, FOREGROUND);
-}
-
-void DrawGraphs(TreesBuffer *treesBuf, float scale)
-{
-    for (size_t i = 0; i < treesBuf->count; i++) {
-        for (float x = -scale; x <= scale; x += STEP) {
-            float y = tree_eval(treesBuf->trees[i], x);
+        float y = tree_eval(exprsBuffer->trees[i], a) - offsetY;
+        Vector2 firstPoint = (Vector2) { -scale, y };
+        for (float x = a; x <= b; x += STEP) {
+            y = tree_eval(exprsBuffer->trees[i], x) - offsetY;
+            float x_norm = (x - a) / (b - a);
+            float x_mapped = -scale + x_norm * 2*scale;
+            Vector2 secondPoint = (Vector2) { x_mapped, y };
             Color color = graphColors[i % graphColorsCount];
-            DrawPixelV(Screen(x, y, scale), color);
+            DrawLineEx(ScreenV(&firstPoint),
+                       ScreenV(&secondPoint),
+                       LINE_THICKNESS, color);
+            firstPoint = secondPoint;
         }
     }
 }
 
-float GetCurrentScale()
+void SetCurrentScale()
 {
-    static float scale = 1;
-    static float wheel = 0;
+    float wheel = 0;
     if ((wheel = GetMouseWheelMove())) {
-        scale += -wheel/2;
+        scale += -wheel / 2;
         ClearBackground(BACKGROUND);
     }
-    return scale;
 }
+
+void SetCurrentOfssets()
+{
+    if (IsKeyPressed(KEY_RIGHT))     offsetX += 0.1;
+    else if (IsKeyPressed(KEY_LEFT)) offsetX -= 0.1;
+    else if (IsKeyPressed(KEY_UP))   offsetY += 0.1;
+    else if (IsKeyPressed(KEY_DOWN)) offsetY -= 0.1;
+}
+
+ExprsBuffer ParseInputExprs(int argc, char *argv[]);
 
 int main(int argc, char *argv[])
 {
-    TreesBuffer treesBuf = ParseInputTrees(argc, argv);
+    ExprsBuffer exprsBuffer = ParseInputExprs(argc, argv);
 
     InitWindow(WIDTH, HEIGHT, "Decmoc");
     SetTargetFPS(20);
 
-    RenderTexture2D axesTexture = CreateAxesTexture();
-
-    float scale = GetCurrentScale();
-
     while (!WindowShouldClose()) {
         BeginDrawing();
             ClearBackground(BACKGROUND);
-            // TODO: move to texture (for now)
-            DrawGridField(GRID_SIZE / 4, GRID_COLOR2);
-            DrawGridField(GRID_SIZE, GRID_COLOR1);
-            DrawAxes(axesTexture);
 
-            scale = GetCurrentScale();
-            DrawGraphs(&treesBuf, scale);
+            SetCurrentScale();
+            SetCurrentOfssets();
+
+            DrawAxes();
+            DrawGraphs(&exprsBuffer);
+            //DrawGridField(GRID_SIZE / 4, GRID_COLOR2, scale, offsetX, offsetY);
+            //DrawGridField(GRID_SIZE, GRID_COLOR1, scale, offsetX, offsetY);
         EndDrawing();
     }
 
     CloseWindow();
-
-    return 0;
 }
 
-TreesBuffer ParseInputTrees(int argc, char *argv[])
+ExprsBuffer ParseInputExprs(int argc, char *argv[])
 {
     if (argc < 2) {
         fprintf(stderr, "USAGE: %s expressions\n", argv[0]);
         exit(1);
     }
-    TreesBuffer res = {0};
+    ExprsBuffer res = {0};
     char expression[256];
     for (int i = 1; i < argc; i++) {
         strncpy(expression, argv[i], sizeof(expression));
