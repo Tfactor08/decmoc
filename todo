@@ -1,8 +1,8 @@
 -- Plotter:
-    -- add visuals for the axes (numbers, labels, etc.);
-    -- add movement across the grid;
+    -- add numbers to the axes;
+    -- reimplement the movement so it works via click and drag;
     -- think over the method of accepting the user input;
-    -- bug: zooming in doesn't work.
+    -- bug: zooming in stops working at some point.
 -- Parser:
     -- maybe using trees for expressions is too inefficient, what about stack-based parsing?
 

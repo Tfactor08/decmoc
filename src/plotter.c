@@ -8,7 +8,7 @@
 #include "vector_utils.c"
 
 #define WIDTH 800
-#define HEIGHT 600
+#define HEIGHT 800
 #define GRID_SIZE 80
 #define BACKGROUND WHITE
 #define FOREGROUND (Color) { 0x2e, 0x2e, 0x2e, 0xff }
@@ -17,18 +17,23 @@
 #define LINE_THICKNESS 3
 #define ARROW_SIZE 8
 
-#define MAX_TREES (2 << 4)
+#define MAX_EXPRS (2 << 4)
 #define STEP 0.2
 
 typedef struct {
-    NodeTree *trees[MAX_TREES];
-    size_t count;
-} ExprsBuffer; 
+    const char *string;
+    NodeTree *tree;
+} Expr;
+
+Expr exprs[MAX_EXPRS];
+size_t exprsCount;
 
 float scale = 1, offsetX = 0, offsetY = 0;
 
-Color graphColors[] = { RED, GREEN, PURPLE };
+const Color graphColors[] = { RED, GREEN, PURPLE };
 const size_t graphColorsCount = sizeof(graphColors) / sizeof(graphColors[0]);
+
+char *input_exprs[MAX_EXPRS];
 
 /* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates */
 Vector2 Screen(float x, float y)
@@ -39,7 +44,8 @@ Vector2 Screen(float x, float y)
     };
 }
 
-/* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates (vector version) */
+/* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates
+   (vector version) */
 Vector2 ScreenV(Vector2 *p)
 {
     return (Vector2) {
@@ -48,26 +54,20 @@ Vector2 ScreenV(Vector2 *p)
     };
 }
 
-// TODO: this version of the function doesn't respect the scale at all.
-//       We can't keep this version since in that case the grid movement
-//       won't be aligned with the graphs.
-//       Actually, calling the Screen function here seems irrational since
-//       the coordinates are in the screen range already. But that's the
-//       only way manage the scaling atm.
 /* Draw a grid in the center of the screen (if the input offsets are zero) */
-void DrawGridField(int grid_size, Color color)
+void DrawGridField(int gridSize, Color color)
 {
-    // the amount of pixels need to be right shifted
-    //int offsetX = ((WIDTH  / 2) + offsetX) % grid_size;
-    // the amount of pixels need to be up shifted
-    //int offsetY = ((HEIGHT / 2) + offsetY) % grid_size;
+    float gridSizeNorm = ((float) gridSize / WIDTH) * scale;
 
-    //DrawLine(x, 0, x, HEIGHT, color);
-    for (int x = offsetX; x <= WIDTH; x += grid_size)
-        DrawLineV(Screen(x, 0), Screen(x, HEIGHT), color);
-    //DrawLine(0, y, WIDTH, y, color);
-    for (int y = offsetY; y <= HEIGHT; y += grid_size)
-        DrawLineV(Screen(0, y), Screen(WIDTH, y), color);
+    // the amount of pixels need to be right shifted
+    float gridOffsetX = fmod(offsetX, gridSizeNorm);
+    // the amount of pixels need to be up shifted
+    float gridOffsetY = fmod(offsetY, gridSizeNorm);
+
+    for (float x = -scale - gridOffsetX; x <= scale - gridOffsetX; x += gridSizeNorm)
+        DrawLineV(Screen(x, -scale), Screen(x, scale), color);
+    for (float y = -scale - gridOffsetY; y <= scale - gridOffsetY; y += gridSizeNorm)
+        DrawLineV(Screen(-scale, y), Screen(scale, y), color);
 }
 
 void DrawAxes()
@@ -82,11 +82,22 @@ void DrawAxes()
                LINE_THICKNESS, FOREGROUND);
 }
 
-void DrawGraphs(ExprsBuffer *exprsBuffer)
+void DrawExprTexts()
+{
+    int margin = 10;
+    int interval = 25;
+    for (size_t i = 0; i < exprsCount; i++) {
+        int x = 0 + margin;
+        int y = i*interval + margin;
+        DrawText(exprs[i].string, x, y, 20, BLACK);
+    }
+}
+
+void DrawGraphs()
 {
     float a = -scale + offsetX;
     float b = scale + offsetX;
-    for (size_t i = 0; i < exprsBuffer->count; i++) {
+    for (size_t i = 0; i < exprsCount; i++) {
         // We need to convert the shifted x coordinates back to -scale..scale range
         // so the Screen* functions can draw them correctly.
         //
@@ -95,20 +106,29 @@ void DrawGraphs(ExprsBuffer *exprsBuffer)
         // n = (x - a) / (b - a) [how far x from the start / the range length]
         // 2) now map to the -c..c range:
         // r = -c + n*2c [first, 0..2c, then -c..c]
-
-        float y = tree_eval(exprsBuffer->trees[i], a) - offsetY;
-        Vector2 firstPoint = (Vector2) { -scale, y };
+        NodeTree *tree = exprs[i].tree;
+        Color color = graphColors[i % graphColorsCount];
+        float y = tree_eval(tree, a) - offsetY;
+        Vector2 firstPoint = (Vector2) { -scale, y }, secondPoint;
         for (float x = a; x <= b; x += STEP) {
-            y = tree_eval(exprsBuffer->trees[i], x) - offsetY;
-            float x_norm = (x - a) / (b - a);
-            float x_mapped = -scale + x_norm * 2*scale;
-            Vector2 secondPoint = (Vector2) { x_mapped, y };
-            Color color = graphColors[i % graphColorsCount];
+            y = tree_eval(tree, x) - offsetY;
+            float xNorm = (x - a) / (b - a);
+            float xMapped = -scale + xNorm * 2*scale;
+            secondPoint = (Vector2) { xMapped, y };
             DrawLineEx(ScreenV(&firstPoint),
                        ScreenV(&secondPoint),
                        LINE_THICKNESS, color);
             firstPoint = secondPoint;
         }
+        // We need to make sure the last line with the end at b is drawn regardless
+        // of the STEP value
+        y = tree_eval(tree, b) - offsetY;
+        float xMapped = -scale + 2*scale;
+        firstPoint = secondPoint;
+        secondPoint = (Vector2) { xMapped, y };
+        DrawLineEx(ScreenV(&firstPoint),
+                   ScreenV(&secondPoint),
+                   LINE_THICKNESS, color);
     }
 }
 
@@ -129,11 +149,11 @@ void SetCurrentOfssets()
     else if (IsKeyPressed(KEY_DOWN)) offsetY -= 0.1;
 }
 
-ExprsBuffer ParseInputExprs(int argc, char *argv[]);
+void ParseInputExprs(int argc, char *argv[]);
 
 int main(int argc, char *argv[])
 {
-    ExprsBuffer exprsBuffer = ParseInputExprs(argc, argv);
+    ParseInputExprs(argc, argv);
 
     InitWindow(WIDTH, HEIGHT, "Decmoc");
     SetTargetFPS(20);
@@ -145,33 +165,33 @@ int main(int argc, char *argv[])
             SetCurrentScale();
             SetCurrentOfssets();
 
+            //DrawGridField(GRID_SIZE / 4, GRID_COLOR2);
+            //DrawGridField(GRID_SIZE, GRID_COLOR1);
+
+            DrawExprTexts();
             DrawAxes();
-            DrawGraphs(&exprsBuffer);
-            //DrawGridField(GRID_SIZE / 4, GRID_COLOR2, scale, offsetX, offsetY);
-            //DrawGridField(GRID_SIZE, GRID_COLOR1, scale, offsetX, offsetY);
+            DrawGraphs();
         EndDrawing();
     }
 
     CloseWindow();
 }
 
-ExprsBuffer ParseInputExprs(int argc, char *argv[])
+void ParseInputExprs(int argc, char *argv[])
 {
     if (argc < 2) {
         fprintf(stderr, "USAGE: %s expressions\n", argv[0]);
         exit(1);
     }
-    ExprsBuffer res = {0};
-    char expression[256];
     for (int i = 1; i < argc; i++) {
-        strncpy(expression, argv[i], sizeof(expression));
-        NodeTree *tree = tree_parse(expression);
-        if (tree == NULL) {
-            fprintf(stderr, "Duck\n");
+        NodeTree *tree = tree_parse(argv[i]);
+        if (tree == NULL)
             exit(EXIT_FAILURE);
-        }
-        res.trees[i-1] = tree;
+        Expr expr = {
+            .string = argv[i],
+            .tree = tree
+        };
+        exprs[i-1] = expr;
     }
-    res.count = argc - 1;
-    return res;
+    exprsCount = argc - 1;
 }
