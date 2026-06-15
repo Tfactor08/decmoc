@@ -3,7 +3,7 @@ BUILD=./build
 INCLUDE=./include
 SOURCE=./src
 #CFLAGS=-Wall -Wformat-overflow=0
-CFLAGS=-Wall
+CFLAGS=-Wall -Wno-unused-function
 
 ifdef D
 	CFLAGS += -g
@@ -11,7 +11,7 @@ endif
 
 .PHONY: default all parser plotter clean
 
-default: parser
+default: plotter
 
 all: dirs parser plotter
 

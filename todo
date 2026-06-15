@@ -1,12 +1,12 @@
 -- Plotter:
-    -- add numbers to the axes;
     -- reimplement the movement so it works via click and drag;
+    -- keep the same amount of axis numbers regardless of the current scale (render decimal value when scale is small and ignore some values when it's big);
     -- think over the method of accepting the user input;
     -- bug: zooming in stops working at some point.
 -- Parser:
-    -- maybe using trees for expressions is too inefficient, what about stack-based parsing?
+    -- maybe using trees for expressions is too inefficient, what about stack-based parsing (shunting-yard algorithm)?
 
-To be Mentioned in README:
+To be mentioned in README:
 -- recursive descent parsing and grammar;
 -- polymorphic code in C: how and why it's useful;
 -- the decision to give up on using arena allocators;
