@@ -522,27 +522,34 @@ void tree_free(NodeTree *tree)
     tree->vtable->free(tree);
 }
 
+// NOTE: 'feat/parameters' branch:
+//       at the moment, parser treats all variables in an input expression the same way --
+//       as an independent variable 'x'. Although, we do not have multivariable functions support yet,
+//       it would be rather simple to add parameters support -- variables whose names are different
+//       from 'x'. Unlike 'x', they will require a fixed value, which user may tweak as he wants to
+//       see how the funciton graph changes.
+
 #ifdef PARSER_MAIN
-    int main(void)
-    {
-        char *expr = NULL;
-        size_t len = 0;
-        ssize_t nread = 0;
-        while (true) {
-            printf("Expr: ");
-            if ((nread = getline(&expr, &len, stdin)) == -1)
-                break;
-            expr[nread - 1] = '\0';
+int main(void)
+{
+    char *expr = NULL;
+    size_t len = 0;
+    ssize_t nread = 0;
+    while (true) {
+        printf("Expr: ");
+        if ((nread = getline(&expr, &len, stdin)) == -1)
+            break;
+        expr[nread - 1] = '\0';
 
-            NodeTree *result = tree_parse(expr);
-            if (!result) continue;
+        NodeTree *result = tree_parse(expr);
+        if (!result) continue;
 
-            tree_print(result);
-            printf("%.2f\n", tree_eval(result, 1));
+        tree_print(result);
+        printf("%.2f\n", tree_eval(result, 1));
 
-            tree_free(result);
-        }
-
-        return 0;
+        tree_free(result);
     }
+
+    return 0;
+}
 #endif
