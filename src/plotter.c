@@ -8,18 +8,18 @@
 #include "basic_utils.c"
 #include "vector_utils.c"
 
-#define WIDTH          800.0f
-#define HEIGHT         800.0f
-#define GRID_SIZE      80.0f
+#define WIDTH 800.0f
+#define HEIGHT 800.0f
+#define GRID_SIZE 80.0f
 #define LINE_THICKNESS 3.0f
-#define TEXT_SIZE      15.0f
-#define BACKGROUND     (Color) { 0xff, 0xff, 0xff, 0xff }
-#define FOREGROUND     (Color) { 0x2e, 0x2e, 0x2e, 0xff }
-#define GRID_COLOR1    (Color) { 0xb8, 0xb8, 0xb8, 0xff }
-#define GRID_COLOR2    (Color) { 0xe7, 0xe7, 0xe7, 0xff }
+#define TEXT_SIZE  15.0f
+#define BACKGROUND  (Color) { 0xff, 0xff, 0xff, 0xff }
+#define FOREGROUND  (Color) { 0x2e, 0x2e, 0x2e, 0xff }
+#define GRID_COLOR1 (Color) { 0xb8, 0xb8, 0xb8, 0xff }
+#define GRID_COLOR2 (Color) { 0xe7, 0xe7, 0xe7, 0xff }
 
 #define MAX_EXPRS (2 << 4)
-#define STEP      0.2f
+#define STEP 0.2f
 
 typedef struct {
     const char *string;
@@ -36,12 +36,20 @@ float startPanX = 0.0f, startPanY = 0.0f;
 const Color graphColors[] = { RED, GREEN, PURPLE };
 const size_t graphColorsCount = sizeof(graphColors) / sizeof(*graphColors);
 
+// NOTE: World-to-Screen transform implementation (Screen* functions) is quite chancy,
+//       and unfortunately I couldn't be able to find better solutions. One of the flaws
+//       is that in some cases the rendering functions have to 'know' about screen offsets
+//       (offsetX and offsetY) in order to draw objects which must be rendered edge-to-edge:  
+//       for example, 'RenderAxes' has to add 'offsetY' to the y coordinate of the vertical
+//       axis and 'offsetX' to the the x coordinate of the horizontal axis.
+//       (Same situation in 'RenderGraphs').
+
 /* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates */
 Vector2 Screen(float x, float y)
 {
     return (Vector2) {
-        .x = (x + scale)/(2*scale) * WIDTH,
-        .y = (1 - (y + scale)/(2*scale)) * HEIGHT
+        .x = (x + scale - offsetX)/(2*scale) * WIDTH,
+        .y = (1 - (y + scale - offsetY)/(2*scale)) * HEIGHT
     };
 }
 
@@ -50,8 +58,8 @@ Vector2 Screen(float x, float y)
 Vector2 ScreenV(Vector2 *p)
 {
     return (Vector2) {
-        .x = (p->x + scale)/(2*scale) * WIDTH,
-        .y = (1 - (p->y + scale)/(2*scale)) * HEIGHT
+        .x = (p->x + scale - offsetX)/(2*scale) * WIDTH,
+        .y = (1 - (p->y + scale - offsetY)/(2*scale)) * HEIGHT
     };
 }
 
@@ -76,22 +84,22 @@ void RenderGridField(int gridSize, Color color)
 void RenderAxes()
 {
     // Vertical axis
-    DrawLineEx(Screen(0 - offsetX, -scale),
-               Screen(0 - offsetX, scale),
+    DrawLineEx(Screen(0, -scale + offsetY),
+               Screen(0, scale + offsetY),
                LINE_THICKNESS, FOREGROUND);
     // Horizontal axis
-    DrawLineEx(Screen(-scale, 0 - offsetY),
-               Screen(scale, 0 - offsetY),
+    DrawLineEx(Screen(-scale + offsetX, 0),
+               Screen(scale + offsetX, 0),
                LINE_THICKNESS, FOREGROUND);
 }
 
 void RenderAxesNumbers()
 {
-    char num[4];
-    float margin = 0.02f;
+    const float margin = 0.02f;
+    char num[1 << 2];
     // X-axis
     for (int nX = -scale + offsetX; nX <= scale + offsetX; nX++) {
-        Vector2 textPos = Screen(nX - offsetX, 0.0f - offsetY - margin);
+        Vector2 textPos = Screen(nX, 0.0f - margin);
         itoa(nX, num, sizeof(num));
         DrawText(num, textPos.x, textPos.y, TEXT_SIZE, BLACK);
     }
@@ -99,7 +107,7 @@ void RenderAxesNumbers()
     for (int nY = -scale + offsetY; nY <= scale + offsetY; nY++) {
         // Avoid rendering 0 twice
         if (nY == 0) continue;
-        Vector2 textPos = Screen(0.0f - offsetX + margin, nY - offsetY);
+        Vector2 textPos = Screen(0.0f + margin, nY);
         itoa(nY, num, sizeof(num));
         DrawText(num, textPos.x, textPos.y, TEXT_SIZE, BLACK);
     }
@@ -119,37 +127,26 @@ void RenderExprLabels()
 
 void RenderGraphs()
 {
-    float a = -scale + offsetX;
-    float b = scale + offsetX;
+    float a = -scale;
+    float b = scale;
     for (size_t i = 0; i < exprsCount; i++) {
-        // We need to convert the shifted x coordinates back to -scale..scale range
-        // so the Screen* functions can draw them correctly.
-        //
-        // Steps required:
-        // 1) normalize x to be in 0..1 range:
-        // n = (x - a) / (b - a) [how far x from the start / the range length]
-        // 2) now map to the -c..c range:
-        // r = -c + n*2c [first, 0..2c, then -c..c]
         NodeTree *tree = exprs[i].tree;
         Color color = graphColors[i % graphColorsCount];
-        float y = tree_eval(tree, a) - offsetY;
-        Vector2 firstPoint = (Vector2) { -scale, y }, secondPoint;
+        // TODO: can we put first and last iterations inside loop as well?
+        float y = tree_eval(tree, a + offsetX);
+        Vector2 firstPoint = (Vector2) { -scale + offsetX, y }, secondPoint;
         for (float x = a; x <= b; x += STEP) {
-            y = tree_eval(tree, x) - offsetY;
-            float xNorm = (x - a) / (b - a);
-            float xMapped = -scale + xNorm * 2.0f*scale;
-            secondPoint = (Vector2) { xMapped, y };
+            y = tree_eval(tree, x + offsetX);
+            secondPoint = (Vector2) { x + offsetX, y };
             DrawLineEx(ScreenV(&firstPoint),
                        ScreenV(&secondPoint),
                        LINE_THICKNESS, color);
             firstPoint = secondPoint;
         }
-        // We need to make sure the last line with the end at b is drawn regardless
-        // of the STEP value
-        y = tree_eval(tree, b) - offsetY;
-        float xMapped = -scale + 2*scale;
+        y = tree_eval(tree, b + offsetX);
+        float x = scale;
         firstPoint = secondPoint;
-        secondPoint = (Vector2) { xMapped, y };
+        secondPoint = (Vector2) { x + offsetX, y };
         DrawLineEx(ScreenV(&firstPoint),
                    ScreenV(&secondPoint),
                    LINE_THICKNESS, color);
@@ -167,27 +164,26 @@ void SetCurrentScale()
 
 void SetCurrentOfssets()
 {
-    if (IsKeyPressed(KEY_RIGHT))     offsetX += 0.1f;
-    else if (IsKeyPressed(KEY_LEFT)) offsetX -= 0.1f;
-    else if (IsKeyPressed(KEY_UP))   offsetY += 0.1f;
-    else if (IsKeyPressed(KEY_DOWN)) offsetY -= 0.1f;
+    //if (IsKeyPressed(KEY_LEFT))       offsetX -= 0.1f;
+    //else if (IsKeyPressed(KEY_RIGHT)) offsetX += 0.1f;
+    //else if (IsKeyPressed(KEY_DOWN))  offsetY -= 0.1f;
+    //else if (IsKeyPressed(KEY_UP))    offsetY += 0.1f;
     // TODO: below is a first attempt of panning implementation;
-    //       doesn't work well on scaling, and has to be reimplemented
-    //       to match new screen-world transformation ('refactor/transform-strategy' branch) anyway.
-    // float mouseX = (float) GetMouseX();
-    // float mouseY = (float) GetMouseY();
-    //
-    // if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-    //     startPanX = mouseX
-    //     startPanY = mouseY;
-    // }
-    // if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
-    //     offsetX -= (mouseX - startPanX) / 100 * scale;
-    //     offsetY += (mouseY - startPanY) / 100 * scale;
+    //       Doesn't work well on scaling (or does it?).
+    float mouseX = (float) GetMouseX();
+    float mouseY = (float) GetMouseY();
+    
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        startPanX = mouseX;
+        startPanY = mouseY;
+    }
+    if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
+        offsetX -= (mouseX - startPanX) / 300 * scale;
+        offsetY += (mouseY - startPanY) / 300 * scale;
 
-    //     startPanX = mouseX;
-    //     startPanY = mouseY;
-    // }
+        startPanX = mouseX;
+        startPanY = mouseY;
+    }
 }
 
 void ParseInputExprs(int argc, char *argv[])
