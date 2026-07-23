@@ -4,12 +4,13 @@
     -- bug: zooming in stops working at some point;
     -- cursor-dependant zooming (not necessary).
 -- Parser:
+    -- "2e^x" is invalid for some reason;
     -- maybe using trees for expressions is too inefficient, what about stack-based parsing (shunting-yard algorithm)?
     -- add parameters.
 
 To be mentioned in README:
--- recursive descent parsing and grammar;
--- polymorphic code in C: how and why it's useful;
--- the decision to give up on using arena allocators;
--- partial unity builds and Makefiles;
--- X-macros in tests.
+    -- recursive descent parsing and grammar;
+    -- polymorphic code in C: how and why it's useful;
+    -- the decision to give up on using arena allocators;
+    -- partial unity builds and Makefiles;
+    -- X-macros in tests.

@@ -18,16 +18,18 @@
 #define GRID_COLOR1 (Color) { 0xb8, 0xb8, 0xb8, 0xff }
 #define GRID_COLOR2 (Color) { 0xe7, 0xe7, 0xe7, 0xff }
 
-#define MAX_EXPRS (2 << 4)
-#define STEP 0.2f
+#define MAX_FUNCS (2 << 4)
+#define XSTEP 0.2f
 
 typedef struct {
     const char *string;
     NodeTree *tree;
-} Expr;
+    // TODO: "Params" struct is quite massive. Maybe allocate it in the dynamic memory?
+    Params params;
+} Func;
 
-Expr exprs[MAX_EXPRS];
-size_t exprsCount;
+Func inputFuncs[MAX_FUNCS];
+size_t inputFuncCount;
 
 float scale = 1.0f;
 float offsetX = 0.0f, offsetY = 0.0f;
@@ -38,11 +40,11 @@ const size_t graphColorsCount = sizeof(graphColors) / sizeof(*graphColors);
 
 // NOTE: World-to-Screen transform implementation (Screen* functions) is quite chancy,
 //       and unfortunately I couldn't be able to find better solutions. One of the flaws
-//       is that in some cases the rendering functions have to 'know' about screen offsets
+//       is that in some cases the rendering functions have to "know" about screen offsets
 //       (offsetX and offsetY) in order to draw objects which must be rendered edge-to-edge:  
-//       for example, 'RenderAxes' has to add 'offsetY' to the y coordinate of the vertical
-//       axis and 'offsetX' to the the x coordinate of the horizontal axis.
-//       (Same situation in 'RenderGraphs').
+//       for example, "RenderAxes" has to add "offsetY" to the y coordinate of the vertical
+//       axis and "offsetX" to the the x coordinate of the horizontal axis
+//       (similar situation in "RenderGraphs").
 
 /* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates */
 Vector2 Screen(float x, float y)
@@ -113,15 +115,15 @@ void RenderAxesNumbers()
     }
 }
 
-void RenderExprLabels()
+void RenderFuncLabels()
 {
     int margin = 10;
     int interval = 25;
-    for (size_t i = 0; i < exprsCount; i++) {
+    for (size_t i = 0; i < inputFuncCount; i++) {
         int x = 0 + margin;
         int y = i*interval + margin;
         Color color = graphColors[i % graphColorsCount];
-        DrawText(exprs[i].string, x, y, TEXT_SIZE, color);
+        DrawText(inputFuncs[i].string, x, y, TEXT_SIZE, color);
     }
 }
 
@@ -129,24 +131,23 @@ void RenderGraphs()
 {
     float a = -scale;
     float b = scale;
-    for (size_t i = 0; i < exprsCount; i++) {
-        NodeTree *tree = exprs[i].tree;
-        Color color = graphColors[i % graphColorsCount];
-        // TODO: can we put first and last iterations inside loop as well?
-        float y = tree_eval(tree, a + offsetX);
-        Vector2 firstPoint = (Vector2) { -scale + offsetX, y }, secondPoint;
-        for (float x = a; x <= b; x += STEP) {
-            y = tree_eval(tree, x + offsetX);
+    for (size_t funci = 0; funci < inputFuncCount; funci++) {
+        Func func = inputFuncs[funci];
+        NodeTree *tree = func.tree;
+        Color color = graphColors[funci % graphColorsCount];
+        float y = tree_eval(tree, a + offsetX, &func.params);
+        Vector2 firstPoint = (Vector2) { a + offsetX, y }, secondPoint;
+        for (float x = a; x <= b; x += XSTEP) {
+            y = tree_eval(tree, x + offsetX, &func.params);
             secondPoint = (Vector2) { x + offsetX, y };
             DrawLineEx(ScreenV(&firstPoint),
                        ScreenV(&secondPoint),
                        LINE_THICKNESS, color);
             firstPoint = secondPoint;
         }
-        y = tree_eval(tree, b + offsetX);
-        float x = scale;
-        firstPoint = secondPoint;
-        secondPoint = (Vector2) { x + offsetX, y };
+        // Make sure we render last line as well regardless of the "b" and "XSTEP" values.
+        y = tree_eval(tree, b + offsetX, &func.params);
+        secondPoint = (Vector2) { b + offsetX, y };
         DrawLineEx(ScreenV(&firstPoint),
                    ScreenV(&secondPoint),
                    LINE_THICKNESS, color);
@@ -168,6 +169,7 @@ void SetCurrentOfssets()
     //else if (IsKeyPressed(KEY_RIGHT)) offsetX += 0.1f;
     //else if (IsKeyPressed(KEY_DOWN))  offsetY -= 0.1f;
     //else if (IsKeyPressed(KEY_UP))    offsetY += 0.1f;
+
     // TODO: below is a first attempt of panning implementation;
     //       Doesn't work well on scaling (or does it?).
     float mouseX = (float) GetMouseX();
@@ -186,28 +188,45 @@ void SetCurrentOfssets()
     }
 }
 
-void ParseInputExprs(int argc, char *argv[])
+/* Acquire parameters for a function (if any) from user (must be dynamic in the future). */
+void AcquireFuncParameters(Func *func)
+{
+    for (size_t parami = 0; parami < func->params.count; parami++) {
+        Params *params = &func->params;
+        // TODO: naming sucks.
+        char param_name = params->params[parami];
+        float param_value = 0;
+        printf("[%s] %c: ", func->string, param_name);
+        scanf("%f", &param_value);
+        // TODO: is this cast safe?
+        params->param_to_value[(int) param_name] = param_value;
+    }
+
+}
+
+void ParseInputFuncs(int argc, char *argv[])
 {
     if (argc < 2) {
-        fprintf(stderr, "USAGE: %s EXPRESSION...\n", argv[0]);
+        fprintf(stderr, "USAGE: %s FUNCTION...\n", argv[0]);
         exit(1);
     }
-    for (int i = 1; i < argc; i++) {
-        NodeTree *tree = tree_parse(argv[i]);
-        if (tree == NULL)
-            exit(EXIT_FAILURE);
-        Expr expr = {
-            .string = argv[i],
-            .tree = tree
-        };
-        exprs[i-1] = expr;
+    for (int argi = 1; argi < argc; argi++) {
+        Func func = {0};
+
+        NodeTree *tree = tree_parse(argv[argi], &func.params);
+        if (tree == NULL) exit(EXIT_FAILURE);
+        func.string = argv[argi];
+        func.tree = tree;
+        AcquireFuncParameters(&func);
+
+        inputFuncs[argi-1] = func;
     }
-    exprsCount = argc - 1;
+    inputFuncCount = argc - 1;
 }
 
 int main(int argc, char *argv[])
 {
-    ParseInputExprs(argc, argv);
+    ParseInputFuncs(argc, argv);
 
     InitWindow(WIDTH, HEIGHT, "Decmoc");
     SetTargetFPS(20);
@@ -219,10 +238,11 @@ int main(int argc, char *argv[])
             SetCurrentScale();
             SetCurrentOfssets();
 
+            // TODO: grid fileds became messed up
             //RenderGridField(GRID_SIZE / 4, GRID_COLOR2);
             //RenderGridField(GRID_SIZE, GRID_COLOR1);
 
-            RenderExprLabels();
+            RenderFuncLabels();
             RenderAxes();
             RenderAxesNumbers();
             RenderGraphs();

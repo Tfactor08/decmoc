@@ -6,7 +6,7 @@ SOURCE=./src
 CFLAGS=-Wall -Wno-unused-function
 
 ifdef D
-	CFLAGS += -g
+	CFLAGS += -ggdb
 endif
 
 .PHONY: default all parser plotter clean
