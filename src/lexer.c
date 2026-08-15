@@ -370,21 +370,21 @@ Lexer lexer_create(const char *content)
 }
 
 #ifdef MAIN
-    int main(void)
-    {
-        char *expr = "1-1 + xsincos * cosEXP - -.69 + PI / 2^d?";
-        Lexer lexer = lexer_create(expr);
-        Token tk = {0};
+int main(void)
+{
+    char *expr = "1-1 + xsincos * cosEXP - -.69 + PI / 2^d?";
+    Lexer lexer = lexer_create(expr);
+    Token tk = {0};
 
-        printf("%s\n", expr);
-        do {
-            tk = lexer_current(&lexer);
-            if (tk.kind == TK_ERROR) {
-                fprintf(stderr, "ERROR (LEXER): %s\n", token_error_get(&tk));
-                return 1;
-            }
-            LexPrintBuffer res = tk.print(&tk);
-            printf("%s\n", res.str);
-        } while ((tk = lexer_next(&lexer)).kind != TK_EOF);
-    }
+    printf("%s\n", expr);
+    do {
+        tk = lexer_current(&lexer);
+        if (tk.kind == TK_ERROR) {
+            fprintf(stderr, "ERROR (LEXER): %s\n", token_error_get(&tk));
+            return 1;
+        }
+        LexPrintBuffer res = tk.print(&tk);
+        printf("%s\n", res.str);
+    } while ((tk = lexer_next(&lexer)).kind != TK_EOF);
+}
 #endif

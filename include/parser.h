@@ -5,7 +5,16 @@
 #define MAX_PARAMS (1 << 4)
 
 #define NODETREE_HEAD \
+    NodeKind kind;    \
     VTable *vtable    \
+
+typedef enum {
+    NODE_BINARY,
+    NODE_FUNC,
+    NODE_NEGATE,
+    NODE_VAR,
+    NODE_NUMBER
+} NodeKind;
 
 typedef struct {
     char str[PRINT_BUFFER_CAP];

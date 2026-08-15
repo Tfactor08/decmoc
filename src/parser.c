@@ -13,23 +13,13 @@ Func: sin | cos | exp
 #include <math.h>
 #include <float.h>
 
-#include "lexer.c"
-#include "basic_utils.c"
-
 #include "parser.h"
+
+#include "lexer.c"
+#include "utils/basic_utils.c"
 
 #define ZERO (1e-8)
 #define FLOAT_PRECISION "2"
-#define ARRAY_LEN(arr) (sizeof((arr)) / sizeof(*(arr)))
-
-#define MALLOC_CHECK(ptr)                                               \
-    do {                                                                \
-        if (!ptr) {                                                     \
-            fprintf(stderr, "ERROR (parser): malloc failed at %s:%d\n", \
-                    __FILE__, __LINE__);                                \
-            exit(EXIT_FAILURE);                                         \
-        }                                                               \
-    } while (0)
 
 typedef struct {
     NODETREE_HEAD;
@@ -69,6 +59,7 @@ static const float const_to_float[] = {
     {                                                                        \
         NodeBinary *node = malloc(sizeof(NodeBinary));                       \
         MALLOC_CHECK(node);                                                  \
+        node->kind = NODE_BINARY;                                            \
         node->vtable = &node_##name##_vtable;                                \
         node->left = left;                                                   \
         node->right = right;                                                 \
@@ -278,7 +269,7 @@ static void node_number_free(void *self)
         .free = node_##node##_free         \
     };
 
-// Specific macro for the Binary node is needed since the free pointer differs
+// Specific macro for the Binary node is needed since the "free" pointer differs
 #define MAKE_NODE_BINARY_VTABLE_STRUCT(node) \
     static VTable node_##node##_vtable = {   \
         .print = node_##node##_print,        \
@@ -309,6 +300,7 @@ static NodeFunc *node_func_make(NodeTree *arg, FUNC func)
 {
     NodeFunc *node = malloc(sizeof(NodeFunc));
     MALLOC_CHECK(node);
+    node->kind = NODE_FUNC;
     node->vtable = &node_func_vtable;
     node->func = func;
     node->arg = arg;
@@ -319,6 +311,7 @@ static NodeNegate *node_negate_make(NodeTree *arg)
 {
     NodeNegate *node = malloc(sizeof(NodeNegate));
     MALLOC_CHECK(node);
+    node->kind = NODE_NEGATE;
     node->vtable = &node_negate_vtable;
     node->arg = arg;
     return node;
@@ -328,6 +321,7 @@ static NodeNumber *node_number_make(float val)
 {
     NodeNumber *node = malloc(sizeof(NodeNumber));
     MALLOC_CHECK(node);
+    node->kind = NODE_NUMBER;
     node->vtable = &node_number_vtable;
     node->value = val;
     return node;
@@ -337,6 +331,7 @@ static NodeVar *node_var_make(char var)
 {
     NodeVar *node = malloc(sizeof(NodeVar));
     MALLOC_CHECK(node);
+    node->kind = NODE_VAR;
     node->vtable = &node_var_vtable;
     node->var = var;
     return node;
@@ -530,13 +525,42 @@ void tree_free(NodeTree *tree)
     tree->vtable->free(tree);
 }
 
-// NOTE: 'feat/parameters' branch:
-//       at the moment, parser treats all variables in an input expression the same way --
-//       as an independent variable 'x'. Although, we do not have multivariable functions support yet,
-//       it would be rather simple to add parameters support -- variables whose names are different
-//       from 'x'. Unlike 'x', they will require a fixed value, which user may tweak they want to
-//       see how the funciton graph changes.
-// TODO: looks like we need a convenient array wrapper for working with parameters (doubt that now).
+// Optimize the tree by folding constant expressions if any (recursive)
+// TODO: sin(x) + 1 + 1 doesn't get folded (unlike 1 + 1 + sin(x))
+NodeTree *tree_fold(NodeTree *tree)
+{
+    NodeKind kind = tree->kind;
+    if (kind == NODE_BINARY) {
+        NodeBinary *node = (NodeBinary *) tree;
+        node->left = tree_fold(node->left);
+        node->right = tree_fold(node->right);
+        if (node->left->kind == NODE_NUMBER && node->right->kind == NODE_NUMBER) {
+            float value_folded = tree_eval(tree, 0, NULL);
+            NodeTree *tree_folded = (NodeTree *) node_number_make(value_folded);
+            tree_free(tree);
+            return tree_folded;
+        } else {
+            return tree;
+        }
+    } else if (kind == NODE_FUNC) {
+        NodeFunc *node = (NodeFunc *) tree;
+        node->arg = tree_fold(node->arg);
+        if (node->arg->kind == NODE_NUMBER) {
+            float value_folded = tree_eval(tree, 0, NULL);
+            NodeTree *tree_folded = (NodeTree *) node_number_make(value_folded);
+            tree_free(tree);
+            return tree_folded;
+        } else {
+            return tree;
+        }
+    } else if (kind == NODE_NEGATE) {
+        assert(0 && "TODO: NODE_NEGATE");
+    } else if (kind == NODE_NUMBER || kind == NODE_VAR) {
+        return tree;
+    } else {
+        assert(0 && "Unreachable");
+    }
+}
 
 #ifdef PARSER_MAIN
 int main(void)
@@ -551,23 +575,15 @@ int main(void)
         expr[nread - 1] = '\0';
 
         Params params = {0};
-
         NodeTree *result = tree_parse(expr, &params);
         if (!result) continue;
 
-        for (size_t i = 0; i < params.count; i++) {
-            char param = params.params[i];
-            float param_value = 0;
-            printf("%c: ", param);
-            scanf("%f", &param_value);
-            // TODO: is this cast safe?
-            params.param_to_value[(int) param] = param_value;
-        }
+        NodeTree *folded = tree_fold(result);
 
-        tree_print(result);
-        printf("%.2f\n", tree_eval(result, 1, &params));
+        tree_print(folded);
+        //printf("%.2f\n", tree_eval(folded, 1, &params));
 
-        tree_free(result);
+        tree_free(folded);
     }
 
     return 0;
