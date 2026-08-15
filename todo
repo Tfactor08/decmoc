@@ -6,7 +6,8 @@
 -- Parser:
     -- "2e^x" is invalid for some reason;
     -- maybe using trees for expressions is too inefficient, what about stack-based parsing (shunting-yard algorithm)?
-    -- add parameters.
+    -- add parameters;
+    -- add comments to the code.
 
 To be mentioned in README:
     -- recursive descent parsing and grammar;

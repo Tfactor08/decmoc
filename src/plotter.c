@@ -5,14 +5,15 @@
 #include <math.h>
 
 #include "parser.h"
-#include "basic_utils.c"
-#include "vector_utils.c"
+#include "slider.h"
+#include "utils/basic_utils.c"
+#include "utils/vector_utils.c"
 
-#define WIDTH 800.0f
-#define HEIGHT 800.0f
+#define WIDTH 960.0f
+#define HEIGHT 720.0f
 #define GRID_SIZE 80.0f
 #define LINE_THICKNESS 3.0f
-#define TEXT_SIZE  15.0f
+#define TEXT_SIZE 15.0f
 #define BACKGROUND  (Color) { 0xff, 0xff, 0xff, 0xff }
 #define FOREGROUND  (Color) { 0x2e, 0x2e, 0x2e, 0xff }
 #define GRID_COLOR1 (Color) { 0xb8, 0xb8, 0xb8, 0xff }
@@ -24,7 +25,7 @@
 typedef struct {
     const char *string;
     NodeTree *tree;
-    // TODO: "Params" struct is quite massive. Maybe allocate it in the dynamic memory?
+    // TODO: "Params" struct is quite massive. Maybe allocate it on the heap?
     Params params;
 } Func;
 
@@ -145,7 +146,7 @@ void RenderGraphs()
                        LINE_THICKNESS, color);
             firstPoint = secondPoint;
         }
-        // Make sure we render last line as well regardless of the "b" and "XSTEP" values.
+        // Make sure last line is rendered as well regardless of the "b" and "XSTEP" values.
         y = tree_eval(tree, b + offsetX, &func.params);
         secondPoint = (Vector2) { b + offsetX, y };
         DrawLineEx(ScreenV(&firstPoint),
@@ -224,6 +225,21 @@ void ParseInputFuncs(int argc, char *argv[])
     inputFuncCount = argc - 1;
 }
 
+void SliderTest(void)
+{
+#define SLIDER_WIDTH 400
+#define HANDLE_RADIUS 10
+    int startX = WIDTH/2 - SLIDER_WIDTH/2;
+    int endX = WIDTH/2 + SLIDER_WIDTH/2;
+
+    Slider *slider = SliderCreate(startX, endX, 150, -5.0f, 5.0f);
+
+    //SliderGetValue(slider);
+
+    SliderSetCurrentPos(slider);
+    SliderDraw(slider);
+}
+
 int main(int argc, char *argv[])
 {
     ParseInputFuncs(argc, argv);
@@ -238,9 +254,11 @@ int main(int argc, char *argv[])
             SetCurrentScale();
             SetCurrentOfssets();
 
-            // TODO: grid fileds became messed up
+            // TODO: grid fileds became messed up.
             //RenderGridField(GRID_SIZE / 4, GRID_COLOR2);
             //RenderGridField(GRID_SIZE, GRID_COLOR1);
+
+            SliderTest();
 
             RenderFuncLabels();
             RenderAxes();
