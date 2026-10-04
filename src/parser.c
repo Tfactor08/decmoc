@@ -535,21 +535,6 @@ static Node *factor(Lexer *l, Params *params)
     return NULL; // Unreachable but silences the warning
 }
 
-//Node *tree_parse(const char *src, Params *params)
-//{
-//    Lexer lexer = lexer_create(src);
-//    Node *result = expression(&lexer, params);
-//    if (!result)
-//        return NULL;
-//    if (lexer_current(&lexer).kind != TK_EOF) {
-//        fprintf(stderr, "ERROR (parser): invalid expression\n");
-//        result->vtable->free(result);
-//        return NULL;
-//    }
-//    return result;
-//}
-
-// NOTE: New implementation where params allocated as part of the return meta structure.
 ParserTree *parser_parse(const char *src)
 {
     ParserTree *tree = malloc(sizeof(ParserTree));
@@ -570,25 +555,11 @@ ParserTree *parser_parse(const char *src)
     return tree;
 }
 
-//void parser_print(Node *tree)
-//{
-//    PrintBuffer res = tree->vtable->print(tree);
-//    printf("%s\n", res.str);
-//}
-
-// NOTE: New implementation where params allocated as part of the return meta structure.
 void parser_print(const ParserTree *tree)
 {
     PrintBuffer result = tree->root->vtable->print(tree->root);
     printf("%s\n", result.str);
 }
-
-//void parser_set_param(Params *params, char param, float value)
-//{
-//    assert(isalpha(param) && "Parameter must be a letter.");
-//    unsigned char param_index = param - 'A'; // this value guaranteed to be >= 0.
-//    params->param_to_value[param_index] = value;
-//}
 
 ParserParams parser_get_params(const ParserTree *tree)
 {
@@ -599,41 +570,23 @@ ParserParams parser_get_params(const ParserTree *tree)
     return params;
 }
 
-// NOTE: New implementation where params allocated as part of the return meta structure.
 void parser_set_param(ParserTree *tree, char param, float value)
 {
     assert(isalpha(param) && "Parameter must be a letter.");
-    unsigned char param_index = param - 'A'; // this value guaranteed to be >= 0.
+    unsigned char param_index = param - 'A'; // This value guaranteed to be >= 0
     tree->params->param_to_value[param_index] = value;
 }
 
-//float parser_eval(Node *tree, float x, Params *params)
-//{
-//    return tree->vtable->eval(tree, x, params);
-//}
-
-// NOTE: New implementation where params allocated as part of the return meta structure.
 float parser_eval(const ParserTree *tree, float x)
 {
     return tree->root->vtable->eval(tree->root, x, tree->params);
 }
 
-//void parser_free(Node *tree)
-//{
-//    tree->vtable->free(tree);
-//}
-
-// NOTE: New implementation where params allocated as part of the return meta structure.
 void parser_free(const ParserTree *tree)
 {
     tree->root->vtable->free(tree->root);
     free(tree->params);
 }
-
-// NOTE: I do not like this design of requiring the user to allocate Parameters
-//       struct on the stack. Why not just allocate it as part of the tree itself?
-//       This would also allow to make the Parameters struct an opaque type.
-//       (Same with PrintBuffer struct).
 
 #ifdef PARSER_MAIN
 int main(void)
