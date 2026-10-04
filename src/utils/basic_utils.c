@@ -6,7 +6,6 @@
 #include <math.h>
 
 #define ARRAY_LEN(arr) (sizeof((arr)) / sizeof(*(arr)))
-
 #define MALLOC_CHECK(ptr)                                               \
     do {                                                                \
         if (!ptr) {                                                     \
@@ -15,6 +14,7 @@
             exit(EXIT_FAILURE);                                         \
         }                                                               \
     } while (0)
+#define CHAR_TO_STR(ch) (char []) { (ch), '\0' }
 
 static void itoa(int n, char *s, size_t len)
 {

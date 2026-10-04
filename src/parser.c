@@ -1,9 +1,9 @@
 /*
-E -> T{+|- T}
-T -> P{*|/ P} | PP{P}
-P -> F{^ F}
-F -> Id | Number | (E) | -F | Func(E)
-Func: sin | cos | exp
+    E -> T {+|- T}
+    T -> P {*|/ P} | PP{P}
+    P -> F {^ F}
+    F -> ID | NUMBER | (E) | -F | FUNC(E)
+    FUNC: sin | cos | exp
 */
 
 #include <stdio.h>
@@ -14,73 +14,100 @@ Func: sin | cos | exp
 #include <float.h>
 
 #include "lexer.c"
-#include "basic_utils.c"
+#include "utils/basic_utils.c"
 
 #include "parser.h"
 
 #define ZERO (1e-8)
 #define FLOAT_PRECISION "2"
-#define ARRAY_LEN(arr) (sizeof((arr)) / sizeof(*(arr)))
 
-#define MALLOC_CHECK(ptr)                                               \
-    do {                                                                \
-        if (!ptr) {                                                     \
-            fprintf(stderr, "ERROR (parser): malloc failed at %s:%d\n", \
-                    __FILE__, __LINE__);                                \
-            exit(EXIT_FAILURE);                                         \
-        }                                                               \
-    } while (0)
+#define PRINT_BUFFER_CAP (1 << 8)
+
+#define NODE_HEAD \
+    VTable *vtable
+
+// TODO: arrange struct definitions properly.
 
 typedef struct {
-    NODETREE_HEAD;
-    NodeTree *left;
-    NodeTree *right;
+    char str[PRINT_BUFFER_CAP];
+} PrintBuffer;
+
+typedef struct {
+    size_t count;
+    char param_list[MAX_PARAMS];
+    // Overall we need 58 array places (2*26 + 6 extra characters that lay in between).
+    float param_to_value[1 << 6];
+} Params;
+
+typedef struct {
+    PrintBuffer (*print)(void *self);
+    float (*eval)(void *self, float x, Params *params);
+    void (*free)(void *self);
+} VTable;
+
+typedef struct {
+    NODE_HEAD;
+} Node;
+
+typedef struct {
+    NODE_HEAD;
+    Node *left;
+    Node *right;
 } NodeBinary;
 
 typedef struct {
-    NODETREE_HEAD;
+    NODE_HEAD;
     FUNC func;
-    NodeTree *arg;
+    Node *arg;
 } NodeFunc;
 
 typedef struct {
-    NODETREE_HEAD;
-    NodeTree *arg;
+    NODE_HEAD;
+    Node *arg;
 } NodeNegate;
 
 typedef struct {
-    NODETREE_HEAD;
+    NODE_HEAD;
     char var;
 } NodeVar;
 
 typedef struct {
-    NODETREE_HEAD;
+    NODE_HEAD;
     float value;
 } NodeNumber;
 
-static const float const_to_float[] = {
+// This is what tree_eval should return.
+// This struct points to the root of the actual tree and contains necessary data
+// about the whole tree (parameters, print buffer, etc).
+struct ParserTree {
+    Node *root;
+    Params *params;
+    // TODO: think about the PrintBuffer.
+};
+
+static const float const_to_value[] = {
     [PI]  = 3.14f,
     [E]   = 2.71f,
     [PHI] = 1.62f
 };
 
-#define MAKE_NODE_BINARY_MAKE_FUNC(name)                                     \
-    static NodeBinary *node_##name##_make(NodeTree *left, NodeTree *right)   \
-    {                                                                        \
-        NodeBinary *node = malloc(sizeof(NodeBinary));                       \
-        MALLOC_CHECK(node);                                                  \
-        node->vtable = &node_##name##_vtable;                                \
-        node->left = left;                                                   \
-        node->right = right;                                                 \
-        return node;                                                         \
+#define MAKE_NODE_BINARY_MAKE_FUNC(name)                           \
+    static NodeBinary *node_##name##_make(Node *left, Node *right) \
+    {                                                              \
+        NodeBinary *node = malloc(sizeof(NodeBinary));             \
+        MALLOC_CHECK(node);                                        \
+        node->vtable = &node_##name##_vtable;                      \
+        node->left = left;                                         \
+        node->right = right;                                       \
+        return node;                                               \
     }
 
 #define MAKE_NODE_BINARY_EVAL_FUNC(name, operator)                                   \
     static float node_##name##_eval(void *self, float x, Params *params)             \
     {                                                                                \
         NodeBinary *node = self;                                                     \
-        NodeTree *l = node->left;                                                    \
-        NodeTree *r = node->right;                                                   \
+        Node *l = node->left;                                                        \
+        Node *r = node->right;                                                       \
         return l->vtable->eval(l, x, params) operator r->vtable->eval(r, x, params); \
     }
 
@@ -110,8 +137,8 @@ MAKE_NODE_BINARY_EVAL_FUNC(mul, *);
 static float node_div_eval(void *self, float x, Params *params)
 {
     NodeBinary *node = self;
-    NodeTree *l = node->left;
-    NodeTree *r = node->right;
+    Node *l = node->left;
+    Node *r = node->right;
     if (x == 0) x = ZERO; // avoid 0/0 indetermination
     return l->vtable->eval(l, x, params) / r->vtable->eval(r, x, params);
 }
@@ -121,15 +148,15 @@ static float node_div_eval(void *self, float x, Params *params)
 static float node_pow_eval(void *self, float x, Params *params)
 {
     NodeBinary *node = self;
-    NodeTree *l = node->left;
-    NodeTree *r = node->right;
+    Node *l = node->left;
+    Node *r = node->right;
     return powf(l->vtable->eval(l, x, params), r->vtable->eval(r, x, params));
 }
 
 static float node_func_eval(void *self, float x, Params *params)
 {
     NodeFunc *node = self;
-    NodeTree *arg = node->arg;
+    Node *arg = node->arg;
     FUNC func = node->func;
     if (func == SIN)
         return sin(arg->vtable->eval(arg, x, params));
@@ -144,7 +171,7 @@ static float node_func_eval(void *self, float x, Params *params)
 static float node_negate_eval(void *self, float x, Params *params)
 {
     NodeNegate *node = self;
-    NodeTree *arg = node->arg;
+    Node *arg = node->arg;
     return -(arg->vtable->eval(arg, x, params));
 }
 
@@ -154,13 +181,21 @@ static float node_number_eval(void *self, float x, Params *params)
     return node->value;
 }
 
+// Used by 'node_var_eval'.
+static float tree_get_param(Params *params, char param)
+{
+    assert(isalpha(param) && "Parameter must be a letter.");
+    unsigned char param_index = param - 'A'; // this value guaranteed to be >= 0.
+    return params->param_to_value[param_index];
+}
+
 static float node_var_eval(void *self, float x, Params *params)
 {
     NodeVar *node = self;
     char var = node->var;
     if (var != 'x')
-        // TODO: is this cast safe?
-        return params->param_to_value[(int) var];
+        return tree_get_param(params, var);
+        //return params->param_to_value[(int) var];
     return x;
 }
 
@@ -305,7 +340,7 @@ MAKE_NODE_BINARY_MAKE_FUNC(mul);
 MAKE_NODE_BINARY_MAKE_FUNC(div);
 MAKE_NODE_BINARY_MAKE_FUNC(pow);
 
-static NodeFunc *node_func_make(NodeTree *arg, FUNC func)
+static NodeFunc *node_func_make(Node *arg, FUNC func)
 {
     NodeFunc *node = malloc(sizeof(NodeFunc));
     MALLOC_CHECK(node);
@@ -315,7 +350,7 @@ static NodeFunc *node_func_make(NodeTree *arg, FUNC func)
     return node;
 }
 
-static NodeNegate *node_negate_make(NodeTree *arg)
+static NodeNegate *node_negate_make(Node *arg)
 {
     NodeNegate *node = malloc(sizeof(NodeNegate));
     MALLOC_CHECK(node);
@@ -342,25 +377,25 @@ static NodeVar *node_var_make(char var)
     return node;
 }
 
-static NodeTree *term(Lexer *, Params *);
+static Node *term(Lexer *, Params *);
 
 // E -> T {+|- T}
-static NodeTree *expression(Lexer *l, Params *params)
+static Node *expression(Lexer *l, Params *params)
 {
-    NodeTree *a = term(l, params);
+    Node *a = term(l, params);
     if (!a) return NULL;
     while (true) {
         TOKEN_KIND tk_kind = lexer_current(l).kind;
         if (tk_kind == TK_PLUS) {
             lexer_next(l);
-            NodeTree *b = term(l, params);
+            Node *b = term(l, params);
             if (!b) return NULL;
-            a = (NodeTree *) node_add_make(a, b);
+            a = (Node *) node_add_make(a, b);
         } else if (tk_kind == TK_MINUS) {
             lexer_next(l);
-            NodeTree *b = term(l, params);
+            Node *b = term(l, params);
             if (!b) return NULL;
-            a = (NodeTree *) node_sub_make(a, b);
+            a = (Node *) node_sub_make(a, b);
         } else {
             return a;
         }
@@ -370,7 +405,7 @@ static NodeTree *expression(Lexer *l, Params *params)
 static bool is_factor(Token token)
 {
     static const TOKEN_KIND factor_tks[] = {
-        TK_VAR, TK_INT, TK_DEC, TK_OPENP, TK_FUNC
+        TK_VAR, TK_INT, TK_DEC, TK_OPENP, TK_FUNC, TK_CONST
     };
     for (size_t i = 0; i < ARRAY_LEN(factor_tks); i++)
         if (token.kind == factor_tks[i])
@@ -378,20 +413,20 @@ static bool is_factor(Token token)
     return false;
 }
 
-static NodeTree *primary(Lexer *, Params *);
-static NodeTree *factor(Lexer *, Params *);
+static Node *primary(Lexer *, Params *);
+static Node *factor(Lexer *, Params *);
 
-// T -> P{*|/ P} | PP{P}
-static NodeTree *term(Lexer *l, Params *params)
+// T -> P {*|/ P} | PP{P}
+static Node *term(Lexer *l, Params *params)
 {
-    NodeTree *a = primary(l, params);
+    Node *a = primary(l, params);
     if (!a) return NULL;
     Token curr_tk = lexer_current(l);
     if (is_factor(curr_tk)) {
         do {
-            NodeTree *b = primary(l, params);
+            Node *b = primary(l, params);
             if (!b) return NULL;
-            a = (NodeTree *) node_mul_make(a, b);
+            a = (Node *) node_mul_make(a, b);
         } while (is_factor(lexer_current(l)));
         return a;
     } else {
@@ -399,14 +434,14 @@ static NodeTree *term(Lexer *l, Params *params)
             curr_tk = lexer_current(l);
             if (curr_tk.kind == TK_MUL) {
                 lexer_next(l);
-                NodeTree *b = primary(l, params);
+                Node *b = primary(l, params);
                 if (!b) return NULL;
-                a = (NodeTree *) node_mul_make(a, b);
+                a = (Node *) node_mul_make(a, b);
             } else if (curr_tk.kind == TK_DIV) {
                 lexer_next(l);
-                NodeTree *b = primary(l, params);
+                Node *b = primary(l, params);
                 if (!b) return NULL;
-                a = (NodeTree *) node_div_make(a, b);
+                a = (Node *) node_div_make(a, b);
             } else {
                 return a;
             }
@@ -414,54 +449,54 @@ static NodeTree *term(Lexer *l, Params *params)
     }
 }
 
-static NodeTree *factor(Lexer *, Params *);
+static Node *factor(Lexer *, Params *);
 
 // P -> F {^ F}
-static NodeTree *primary(Lexer *l, Params *params)
+static Node *primary(Lexer *l, Params *params)
 {
-    NodeTree *a = factor(l, params);
+    Node *a = factor(l, params);
     if (!a) return NULL;
     while (true) {
         TOKEN_KIND tk_kind = lexer_current(l).kind;
         if (tk_kind == TK_POW) {
             lexer_next(l);
-            NodeTree *b = factor(l, params);
+            Node *b = factor(l, params);
             if (!b) return NULL;
-            a = (NodeTree *) node_pow_make(a, b);
+            a = (Node *) node_pow_make(a, b);
         } else {
             return a;
         }
     }
 }
 
-// F -> Id | Number | (E) | -F | Func(E)
-static NodeTree *factor(Lexer *l, Params *params)
+// F -> ID | NUMBER | (E) | -F | FUNC(E)
+static Node *factor(Lexer *l, Params *params)
 {
     Token curr_tk = lexer_current(l);
     if (curr_tk.kind == TK_INT) {
         lexer_next(l);
-        return (NodeTree *) node_number_make(token_int_get(&curr_tk));
+        return (Node *) node_number_make(token_int_get(&curr_tk));
     } else if (curr_tk.kind == TK_DEC) {
         lexer_next(l);
-        return (NodeTree *) node_number_make(token_dec_get(&curr_tk));
+        return (Node *) node_number_make(token_dec_get(&curr_tk));
     } else if (curr_tk.kind == TK_CONST) {
         lexer_next(l);
         CONST constt = token_const_get(&curr_tk);
-        return (NodeTree *) node_number_make(const_to_float[constt]);
+        return (Node *) node_number_make(const_to_value[constt]);
     } else if (curr_tk.kind == TK_VAR) {
         lexer_next(l);
         char var = token_var_get(&curr_tk);
         if (var != 'x')
-            params->params[params->count++] = var;
-        return (NodeTree *) node_var_make(var);
+            params->param_list[params->count++] = var;
+        return (Node *) node_var_make(var);
     } else if (curr_tk.kind == TK_MINUS) {
         lexer_next(l);
-        NodeTree *f = factor(l, params);
+        Node *f = factor(l, params);
         if (!f) return NULL;
-        return (NodeTree *) node_negate_make(f);
+        return (Node *) node_negate_make(f);
     } else if (curr_tk.kind == TK_OPENP) {
         lexer_next(l);
-        NodeTree *e = expression(l, params);
+        Node *e = expression(l, params);
         if (!e) return NULL;
         if (lexer_current(l).kind == TK_CLOSEP) {
             lexer_next(l);
@@ -475,20 +510,20 @@ static NodeTree *factor(Lexer *l, Params *params)
         Token func_tk = curr_tk;
         lexer_next(l);
         if (lexer_current(l).kind != TK_OPENP) {
-            fprintf(stderr, "ERROR (parser): ( expected after function\n");
+            fprintf(stderr, "ERROR (parser): ( expected after function name\n");
             return NULL;
         }
         lexer_next(l);
-        NodeTree *e = expression(l, params);
+        Node *e = expression(l, params);
         if (!e) return NULL;
         FUNC func_kind = token_func_get(&func_tk);
         func = node_func_make(e, func_kind);
         if (lexer_current(l).kind != TK_CLOSEP) {
-            fprintf(stderr, "ERROR (parser): unmatching ) for function\n");
+            fprintf(stderr, "ERROR (parser): unmatching ( for function\n");
             return NULL;
         }
         lexer_next(l);
-        return (NodeTree *) func;
+        return (Node *) func;
     } else if (curr_tk.kind == TK_ERROR) {
         fprintf(stderr, "ERROR (lexer): %s\n", token_error_get(&curr_tk));
         return NULL;
@@ -500,43 +535,105 @@ static NodeTree *factor(Lexer *l, Params *params)
     return NULL; // Unreachable but silences the warning
 }
 
-NodeTree *tree_parse(const char *src, Params *params)
+//Node *tree_parse(const char *src, Params *params)
+//{
+//    Lexer lexer = lexer_create(src);
+//    Node *result = expression(&lexer, params);
+//    if (!result)
+//        return NULL;
+//    if (lexer_current(&lexer).kind != TK_EOF) {
+//        fprintf(stderr, "ERROR (parser): invalid expression\n");
+//        result->vtable->free(result);
+//        return NULL;
+//    }
+//    return result;
+//}
+
+// NOTE: New implementation where params allocated as part of the return meta structure.
+ParserTree *parser_parse(const char *src)
 {
+    ParserTree *tree = malloc(sizeof(ParserTree));
+    tree->params = calloc(1, sizeof(Params));
+
     Lexer lexer = lexer_create(src);
-    NodeTree *result = expression(&lexer, params);
-    if (!result)
+
+    Node *tree_root = expression(&lexer, tree->params);
+    if (!tree_root)
         return NULL;
     if (lexer_current(&lexer).kind != TK_EOF) {
         fprintf(stderr, "ERROR (parser): invalid expression\n");
-        result->vtable->free(result);
+        tree_root->vtable->free(tree_root);
         return NULL;
     }
-    return result;
+
+    tree->root = tree_root;
+    return tree;
 }
 
-void tree_print(NodeTree *tree)
+//void parser_print(Node *tree)
+//{
+//    PrintBuffer res = tree->vtable->print(tree);
+//    printf("%s\n", res.str);
+//}
+
+// NOTE: New implementation where params allocated as part of the return meta structure.
+void parser_print(const ParserTree *tree)
 {
-    PrintBuffer res = tree->vtable->print(tree);
-    printf("%s\n", res.str);
+    PrintBuffer result = tree->root->vtable->print(tree->root);
+    printf("%s\n", result.str);
 }
 
-float tree_eval(NodeTree *tree, float x, Params *params)
+//void parser_set_param(Params *params, char param, float value)
+//{
+//    assert(isalpha(param) && "Parameter must be a letter.");
+//    unsigned char param_index = param - 'A'; // this value guaranteed to be >= 0.
+//    params->param_to_value[param_index] = value;
+//}
+
+ParserParams parser_get_params(const ParserTree *tree)
 {
-    return tree->vtable->eval(tree, x, params);
+    ParserParams params = {0};
+    size_t param_count = tree->params->count; 
+    params.count = param_count;
+    memcpy(params.param_list, tree->params->param_list, param_count); 
+    return params;
 }
 
-void tree_free(NodeTree *tree)
+// NOTE: New implementation where params allocated as part of the return meta structure.
+void parser_set_param(ParserTree *tree, char param, float value)
 {
-    tree->vtable->free(tree);
+    assert(isalpha(param) && "Parameter must be a letter.");
+    unsigned char param_index = param - 'A'; // this value guaranteed to be >= 0.
+    tree->params->param_to_value[param_index] = value;
 }
 
-// NOTE: 'feat/parameters' branch:
-//       at the moment, parser treats all variables in an input expression the same way --
-//       as an independent variable 'x'. Although, we do not have multivariable functions support yet,
-//       it would be rather simple to add parameters support -- variables whose names are different
-//       from 'x'. Unlike 'x', they will require a fixed value, which user may tweak they want to
-//       see how the funciton graph changes.
-// TODO: looks like we need a convenient array wrapper for working with parameters (doubt that now).
+//float parser_eval(Node *tree, float x, Params *params)
+//{
+//    return tree->vtable->eval(tree, x, params);
+//}
+
+// NOTE: New implementation where params allocated as part of the return meta structure.
+float parser_eval(const ParserTree *tree, float x)
+{
+    return tree->root->vtable->eval(tree->root, x, tree->params);
+}
+
+//void parser_free(Node *tree)
+//{
+//    tree->vtable->free(tree);
+//}
+
+// NOTE: New implementation where params allocated as part of the return meta structure.
+void parser_free(const ParserTree *tree)
+{
+    tree->root->vtable->free(tree->root);
+    free(tree->params);
+}
+
+// NOTE: I do not like this design of requiring the user to allocate Parameters
+//       struct on the stack. Why not just allocate it as part of the tree itself?
+//       This would also allow to make the Parameters struct an opaque type.
+//       (Same with PrintBuffer struct).
 
 #ifdef PARSER_MAIN
 int main(void)
@@ -550,24 +647,13 @@ int main(void)
             break;
         expr[nread - 1] = '\0';
 
-        Params params = {0};
-
-        NodeTree *result = tree_parse(expr, &params);
+        ParserTree *result = parser_parse(expr);
         if (!result) continue;
 
-        for (size_t i = 0; i < params.count; i++) {
-            char param = params.params[i];
-            float param_value = 0;
-            printf("%c: ", param);
-            scanf("%f", &param_value);
-            // TODO: is this cast safe?
-            params.param_to_value[(int) param] = param_value;
-        }
+        parser_print(result);
+        printf("%.2f\n", parser_eval(result, 1));
 
-        tree_print(result);
-        printf("%.2f\n", tree_eval(result, 1, &params));
-
-        tree_free(result);
+        parser_free(result);
     }
 
     return 0;

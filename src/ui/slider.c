@@ -1,7 +1,7 @@
 #include "slider.h"
 #include "../utils/basic_utils.c"
 
-#define SLIDER_WIDTH_DEFAULT  400
+#define SLIDER_LABEL_MAX 10
 #define HANDLE_RADIUS_DEFAULT 10
 
 // TODO: allow setting slider position by clicking on the line
@@ -16,6 +16,7 @@ struct Slider {
     bool isBeingDragged;
     Vector2 handlePos;
     float handleRadius;
+    char label[SLIDER_LABEL_MAX];
 };
 
 static bool MouseOnSlider(Slider *slider)
@@ -32,33 +33,27 @@ static void SetCurrentMode(Slider *slider)
     if (slider->isBeingDragged) {
         if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
             slider->isBeingDragged = false;
-            float value = SliderGetValue(slider);
-            printf("%f\n", value);
         }
     } else if (MouseOnSlider(slider) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         slider->isBeingDragged = true;
     }
 }
 
-Slider *SliderCreate(int startX, int endX, int posY, float min, float max)
+Slider *SliderCreate(int startX, int endX, int posY, float min, float max, const char *label)
 {
     Slider *slider = malloc(sizeof(Slider));
     MALLOC_CHECK(slider);
 
-    int width;
     float handleRadius;
-#ifdef SLIDER_WIDTH
-    width = SLIDER_WIDTH,
-#else
-    width = SLIDER_WIDTH_DEFAULT,
-#endif // SLIDER_WIDTH
 #ifdef HANDLE_RADIUS
     handleRadius = HANDLE_RADIUS;
 #else
     handleRadius = HANDLE_RADIUS_DEFAULT;
 #endif // HANDLE_RADIUS
+    int width = endX - startX;
+    float magnitude = max - min;
     Vector2 handlePos = {
-        .x = startX + width/2,
+        .x = startX + width * ((1 - min) / magnitude), // Position the handle at value 1.
         .y = posY
     };
 
@@ -73,6 +68,7 @@ Slider *SliderCreate(int startX, int endX, int posY, float min, float max)
         .handlePos = handlePos,
         .handleRadius = handleRadius
     };
+    strncpy(slider->label, label, SLIDER_LABEL_MAX);
     return slider;
 }
 
@@ -101,6 +97,7 @@ void SliderSetCurrentPos(Slider *slider)
 
 void SliderDraw(Slider *slider)
 {
+    DrawText(slider->label, slider->startX, slider->posY - 20, 15, BLACK);
     DrawCircle(slider->handlePos.x, slider->handlePos.y, slider->handleRadius, BLACK);
     DrawLine(slider->startX, slider->posY, slider->endX, slider->posY, BLACK);
 }

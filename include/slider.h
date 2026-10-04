@@ -6,7 +6,7 @@
 
 typedef struct Slider Slider;
 
-Slider *SliderCreate(int startX, int endX, int posY, float min, float max);
+Slider *SliderCreate(int startX, int endX, int posY, float min, float max, const char *label);
 float SliderGetValue(Slider *slider);
 void SliderSetCurrentPos(Slider *slider);
 void SliderDraw(Slider *slider);

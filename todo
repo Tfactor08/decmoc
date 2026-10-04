@@ -1,13 +1,17 @@
--- Plotter:
-    -- keep the same amount of axis numbers regardless of the current scale (render decimal value when scale is small and ignore some values when it's big);
+Plotter:
+    -- make the Slider work more efficiently--set and save its value only while it's being dragged and return it afterwards;
+    -- keep the same amount of axis numbers regardless of the current scale (render decimal values when scale is small and ignore some values when it's big);
     -- think over the method of accepting the user input;
+    -- bug: the axis overlap with left panel (but the graph doesn't, which is weird);
     -- bug: zooming in stops working at some point;
     -- cursor-dependant zooming (not necessary).
--- Parser:
-    -- "2e^x" is invalid for some reason;
-    -- maybe using trees for expressions is too inefficient, what about stack-based parsing (shunting-yard algorithm)?
+Parser:
     -- add parameters;
+    -- add logarithmic function and absolute value;
+    -- maybe using trees for expressions is too inefficient, what about stack-based parsing (shunting-yard algorithm)?
+General:
     -- add comments to the code.
+    -- maybe use Tsoding's tart tool for issue tracking.
 
 To be mentioned in README:
     -- recursive descent parsing and grammar;

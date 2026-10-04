@@ -1,37 +1,32 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-#define PRINT_BUFFER_CAP (1 << 8)
 #define MAX_PARAMS (1 << 4)
 
-#define NODETREE_HEAD \
-    VTable *vtable    \
+typedef struct ParserTree ParserTree;
 
-typedef struct {
-    char str[PRINT_BUFFER_CAP];
-} PrintBuffer;
-
-// TODO: maybe create "Params"-related functions like "set_param(...)" instead of
-//       requiring user to do "params.param_to_value[(int) param] = value" manually?
+// NOTE: Interface to the inner Params struct.
 typedef struct {
     size_t count;
-    char params[MAX_PARAMS];
-    float param_to_value[1 << 7];
-} Params;
+    char param_list[MAX_PARAMS];
+} ParserParams;
 
-typedef struct {
-    PrintBuffer (*print)(void *self);
-    float (*eval)(void *self, float x, Params *params);
-    void (*free)(void *self);
-} VTable;
+ParserTree*
+parser_parse(const char *src);
 
-typedef struct {
-    NODETREE_HEAD;
-} NodeTree;
+void
+parser_print(const ParserTree *tree);
 
-NodeTree *tree_parse(const char *src, Params *params);
-void tree_print(NodeTree *tree);
-float tree_eval(NodeTree *tree, float x, Params *params);
-void tree_free(NodeTree *tree);
+float
+parser_eval(const ParserTree *tree, float x);
 
-#endif
+void
+parser_free(const ParserTree *tree);
+
+ParserParams
+parser_get_params(const ParserTree *tree);
+
+void
+parser_set_param(ParserTree *tree, char param, float value);
+
+#endif // PARSER_H
