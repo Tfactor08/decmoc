@@ -12,6 +12,8 @@ Constant: PI/pi | E/e | PHI/phi
 #include <assert.h>
 #include <stdbool.h>
 
+#include "utils/basic_utils.c"
+
 #define MAX_STRING_LEN 256
 #define PRINT_BUFFER_CAP (1 << 8)
 
@@ -89,12 +91,25 @@ static char char_to_token[] = {
     [')'] = TK_CLOSEP
 };
 
+static char *func_to_str[] = {
+    [SIN] = SIN_STR,
+    [COS] = COS_STR,
+    [EXP] = EXP_STR,
+    [LOG] = LOG_STR
+};
+
+static char *const_to_str[] = {
+    [PI] = PI_STR,
+    [E] = E_STR,
+    [PHI] = PHI_STR
+};
+
 static bool is_literal(TOKEN_KIND kind)
 {
     static const TOKEN_KIND literal_tks[] = {
         TK_OPENP, TK_CLOSEP, TK_PLUS, TK_MINUS, TK_MUL, TK_DIV, TK_POW
     };
-    static const size_t literal_tks_count = sizeof(literal_tks) / sizeof(literal_tks[0]);
+    static const size_t literal_tks_count = ARRAY_LEN(literal_tks);
     for (size_t i = 0; i < literal_tks_count; i++) 
         if (kind == literal_tks[i])
             return true;
@@ -313,32 +328,27 @@ static Token token_next(Lexer *l)
         }
     } else if (isalpha(l->content[l->pos])) {
         const char *str_ptr = l->content + l->pos;
-        // TODO: this condition chain can be shrinked
-        if (strncasecmp(str_ptr, SIN_STR, strlen(SIN_STR)) == 0) {
-            l->pos += strlen(SIN_STR);
-            RETURN_TOKEN(token_func_make, SIN);
-        } else if (strncasecmp(str_ptr, COS_STR, strlen(COS_STR)) == 0) {
-            l->pos += strlen(COS_STR);
-            RETURN_TOKEN(token_func_make, COS);
-        } else if (strncasecmp(str_ptr, EXP_STR, strlen(EXP_STR)) == 0) {
-            l->pos += strlen(EXP_STR);
-            RETURN_TOKEN(token_func_make, EXP);
-        } else if (strncasecmp(str_ptr, LOG_STR, strlen(LOG_STR)) == 0) {
-            l->pos += strlen(LOG_STR);
-            RETURN_TOKEN(token_func_make, LOG);
-        } else if (strncasecmp(str_ptr, PI_STR, strlen(PI_STR)) == 0) {
-            l->pos += strlen(PI_STR);
-            RETURN_TOKEN(token_const_make, PI);
-        } else if (strncasecmp(str_ptr, E_STR, strlen(E_STR)) == 0) {
-            l->pos += strlen(E_STR);
-            RETURN_TOKEN(token_const_make, E);
-        } else if (strncasecmp(str_ptr, PHI_STR, strlen(PHI_STR)) == 0) {
-            l->pos += strlen(PHI_STR);
-            RETURN_TOKEN(token_const_make, PHI);
-        } else {
-            l->pos += 1;
-            RETURN_TOKEN(token_var_make, *str_ptr);
+        static FUNC funcs[] = { SIN, COS, EXP, LOG };
+        static CONST consts[] = { PI, E, PHI };
+        for (size_t i = 0; i < ARRAY_LEN(funcs); i++) {
+            FUNC func = funcs[i];
+            char *func_str = func_to_str[func];
+            if (strncasecmp(str_ptr, func_str, strlen(func_str)) == 0) {
+                l->pos += strlen(func_str);
+                RETURN_TOKEN(token_func_make, func);
+            }
         }
+        for (size_t i = 0; i < ARRAY_LEN(consts); i++) {
+            CONST _const = consts[i];
+            char *const_str = const_to_str[_const];
+            if (strncasecmp(str_ptr, const_str, strlen(const_str)) == 0) {
+                l->pos += strlen(const_str);
+                RETURN_TOKEN(token_const_make, _const);
+            }
+        }
+        // Neither function or constant => variable token
+        l->pos += 1;
+        RETURN_TOKEN(token_var_make, *str_ptr);
     } else if (c == '+' || c == '-' || c == '*' || c == '/' || c == '^' || c == '(' || c == ')') {
         l->pos += 1;
         RETURN_TOKEN(token_literal_make, char_to_token[(int) c], c);
