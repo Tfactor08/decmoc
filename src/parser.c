@@ -26,7 +26,7 @@
 #define NODE_HEAD \
     VTable *vtable
 
-// TODO: arrange struct definitions properly.
+// TODO: arrange struct definitions properly
 
 typedef struct {
     char str[PRINT_BUFFER_CAP];
@@ -35,8 +35,7 @@ typedef struct {
 typedef struct {
     size_t count;
     char param_list[MAX_PARAMS];
-    // Overall we need 58 array places (2*26 + 6 extra characters that lay in between).
-    float param_to_value[1 << 6];
+    float param_to_value[1 << 6]; // Overall we need 58 array places (2*26 + 6 extra characters that lay in between)
 } Params;
 
 typedef struct {
@@ -82,7 +81,7 @@ typedef struct {
 struct ParserTree {
     Node *root;
     Params *params;
-    // TODO: think about the PrintBuffer.
+    // TODO: think about the PrintBuffer
 };
 
 static const float const_to_value[] = {
@@ -159,11 +158,13 @@ static float node_func_eval(void *self, float x, Params *params)
     Node *arg = node->arg;
     FUNC func = node->func;
     if (func == SIN)
-        return sin(arg->vtable->eval(arg, x, params));
+        return sinf(arg->vtable->eval(arg, x, params));
     else if (func == COS)
-        return cos(arg->vtable->eval(arg, x, params));
+        return cosf(arg->vtable->eval(arg, x, params));
     else if (func == EXP)
-        return exp(arg->vtable->eval(arg, x, params));
+        return expf(arg->vtable->eval(arg, x, params));
+    else if (func == LOG)
+        return logf(arg->vtable->eval(arg, x, params));
     else
         assert(0 && "Unhandled function");
 }
@@ -228,7 +229,7 @@ static PrintBuffer node_func_print(void *self)
     }
     int str_len = strlen(func_str) + strlen(arg_buf.str) + 5;
     assert(PRINT_BUFFER_CAP >= str_len);
-    // The condition is used to silence the "-Wformat-truncation" warning.
+    // The condition is used to silence the "-Wformat-truncation" warning
     snprintf(buf.str, PRINT_BUFFER_CAP, "(%s(%s))",
              func_str, arg_buf.str) < 0 ?
              exit(EXIT_FAILURE) : (void) 0;

@@ -18,6 +18,7 @@ Constant: PI/pi | E/e | PHI/phi
 #define SIN_STR "sin"
 #define COS_STR "cos"
 #define EXP_STR "exp"
+#define LOG_STR "ln"
 
 #define PI_STR  "pi"
 #define E_STR   "e"
@@ -43,7 +44,8 @@ typedef enum {
 typedef enum {
     SIN,
     COS,
-    EXP
+    EXP,
+    LOG
 } FUNC; 
 
 typedef enum {
@@ -129,6 +131,9 @@ static LexPrintBuffer token_func_print(Token *tk)
             break;
         case EXP:
             snprintf(buf.str, PRINT_BUFFER_CAP, "Func: %s", EXP_STR);
+            break;
+        case LOG:
+            snprintf(buf.str, PRINT_BUFFER_CAP, "Func: %s", LOG_STR);
             break;
         default:
             assert(0 && "Unhandled function\n");
@@ -318,6 +323,9 @@ static Token token_next(Lexer *l)
         } else if (strncasecmp(str_ptr, EXP_STR, strlen(EXP_STR)) == 0) {
             l->pos += strlen(EXP_STR);
             RETURN_TOKEN(token_func_make, EXP);
+        } else if (strncasecmp(str_ptr, LOG_STR, strlen(LOG_STR)) == 0) {
+            l->pos += strlen(LOG_STR);
+            RETURN_TOKEN(token_func_make, LOG);
         } else if (strncasecmp(str_ptr, PI_STR, strlen(PI_STR)) == 0) {
             l->pos += strlen(PI_STR);
             RETURN_TOKEN(token_const_make, PI);
@@ -369,22 +377,22 @@ Lexer lexer_create(const char *content)
     return l;
 }
 
-#ifdef MAIN
-    int main(void)
-    {
-        char *expr = "1-1 + xsincos * cosEXP - -.69 + PI / 2^d?";
-        Lexer lexer = lexer_create(expr);
-        Token tk = {0};
+#ifdef LEXER_MAIN
+int main(void)
+{
+    char *expr = "ln1-1 + xsincos * cosEXP - -.69 + PI / 2^d?";
+    Lexer lexer = lexer_create(expr);
+    Token tk = {0};
 
-        printf("%s\n", expr);
-        do {
-            tk = lexer_current(&lexer);
-            if (tk.kind == TK_ERROR) {
-                fprintf(stderr, "ERROR (LEXER): %s\n", token_error_get(&tk));
-                return 1;
-            }
-            LexPrintBuffer res = tk.print(&tk);
-            printf("%s\n", res.str);
-        } while ((tk = lexer_next(&lexer)).kind != TK_EOF);
-    }
+    printf("%s\n", expr);
+    do {
+        tk = lexer_current(&lexer);
+        if (tk.kind == TK_ERROR) {
+            fprintf(stderr, "ERROR (LEXER): %s\n", token_error_get(&tk));
+            return 1;
+        }
+        LexPrintBuffer res = tk.print(&tk);
+        printf("%s\n", res.str);
+    } while ((tk = lexer_next(&lexer)).kind != TK_EOF);
+}
 #endif
