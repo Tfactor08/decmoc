@@ -1,6 +1,6 @@
 # Make the Slider Work More Efficiently
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 200
 - TAGS: refactor,plotter
 

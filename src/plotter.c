@@ -251,7 +251,7 @@ void RenderUIElements()
 // Must be called on every frame
 void RenderSlider(Slider *slider)
 {
-    SliderSetCurrentPos(slider);
+    SliderSetCurrentState(slider);
     SliderDraw(slider);
 }
 

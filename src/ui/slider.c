@@ -13,13 +13,15 @@ struct Slider {
     int posY;
     float min;
     float max;
+    float currentValue;
     bool isBeingDragged;
     Vector2 handlePos;
     float handleRadius;
+    Color handleColor;
     char label[SLIDER_LABEL_MAX];
 };
 
-static bool MouseOnSlider(Slider *slider)
+static bool MouseOnHandler(Slider *slider)
 {
     return CheckCollisionPointCircle(
         GetMousePosition(),
@@ -31,12 +33,33 @@ static bool MouseOnSlider(Slider *slider)
 static void SetCurrentMode(Slider *slider)
 {
     if (slider->isBeingDragged) {
-        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT)) {
+        if (IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
             slider->isBeingDragged = false;
-        }
-    } else if (MouseOnSlider(slider) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        slider->isBeingDragged = true;
+    } else if (MouseOnHandler(slider)) {
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+            slider->isBeingDragged = true;
+        slider->handleColor = BLUE;
+    } else {
+        slider->handleColor = BLACK;
     }
+}
+
+static void SetCurrentPos(Slider *slider)
+{
+    int newPos;
+    int mouseX = GetMouseX();
+    if (mouseX > slider->endX) newPos = slider->endX;
+    else if (mouseX < slider->startX) newPos = slider->startX;
+    else newPos = mouseX;
+    slider->handlePos.x = newPos;
+}
+
+static void SetCurrentValue(Slider *slider)
+{
+    float magnitude = slider->max - slider->min;
+    float handleX = slider->handlePos.x - slider->startX; // handle's x pos relative to the slider (not screen)
+    float value = (magnitude * (handleX / slider->width)) + slider->min;
+    slider->currentValue = value;
 }
 
 Slider *SliderCreate(int startX, int endX, int posY, float min, float max, const char *label)
@@ -53,7 +76,7 @@ Slider *SliderCreate(int startX, int endX, int posY, float min, float max, const
     int width = endX - startX;
     float magnitude = max - min;
     Vector2 handlePos = {
-        .x = startX + width * ((1 - min) / magnitude), // Position the handle at value 1.
+        .x = startX + width * ((1 - min) / magnitude), // Position the handle at value 1
         .y = posY
     };
 
@@ -64,6 +87,7 @@ Slider *SliderCreate(int startX, int endX, int posY, float min, float max, const
         .posY = posY,
         .min = min,
         .max = max,
+        .currentValue = 1.0f,
         .isBeingDragged = false,
         .handlePos = handlePos,
         .handleRadius = handleRadius
@@ -74,32 +98,25 @@ Slider *SliderCreate(int startX, int endX, int posY, float min, float max, const
 
 float SliderGetValue(Slider *slider)
 {
-    float magnitude = slider->max - slider->min;
-    float handleX = slider->handlePos.x - slider->startX; // handle's x pos relative to the slider (not screen)
-    float value = (magnitude * (handleX / slider->width)) + slider->min;
-    return value;
+    return slider->currentValue;
 }
 
 // TODO: there must be better naming!
-// This function must be called on every frame.
-void SliderSetCurrentPos(Slider *slider)
+// This function must be called on every frame
+void SliderSetCurrentState(Slider *slider)
 {
     SetCurrentMode(slider);
     if (slider->isBeingDragged) {
-        int newPos;
-        int mouseX = GetMouseX();
-        if (mouseX > slider->endX) newPos = slider->endX;
-        else if (mouseX < slider->startX) newPos = slider->startX;
-        else newPos = mouseX;
-        slider->handlePos.x = newPos;
+        SetCurrentPos(slider);
+        SetCurrentValue(slider);
     }
 }
 
 void SliderDraw(Slider *slider)
 {
     DrawText(slider->label, slider->startX, slider->posY - 20, 15, BLACK);
-    DrawCircle(slider->handlePos.x, slider->handlePos.y, slider->handleRadius, BLACK);
     DrawLine(slider->startX, slider->posY, slider->endX, slider->posY, BLACK);
+    DrawCircle(slider->handlePos.x, slider->handlePos.y, slider->handleRadius, slider->handleColor);
 }
 
 void SliderDestroy(Slider *slider)
