@@ -13,7 +13,7 @@ all: dirs lexer_test parser_test
 
 lexer_test: $(BUILD)/lexer_test
 $(BUILD)/lexer_test: lexer_test.c test.h $(DECMOC_SOURCE)/lexer.c
-	$(CC) $(CFLAGS) lexer_test.c -o $(BUILD)/lexer_test
+	$(CC) $(CFLAGS) lexer_test.c -lm -o $(BUILD)/lexer_test
 
 parser_test: $(BUILD)/parser_test
 $(BUILD)/parser_test: parser_test.c test.h $(DECMOC_BUILD)/parser.o
