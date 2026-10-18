@@ -8,15 +8,16 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <stdbool.h>
 #include <assert.h>
 #include <math.h>
 #include <float.h>
 
-#include "lexer.c"
-#include "utils/basic_utils.c"
-
 #include "parser.h"
+#include "lexer.h"
+
+#include "utils/basic_utils.c"
 
 #define ZERO (1e-8)
 #define FLOAT_PRECISION "2"
@@ -458,8 +459,7 @@ static Node *primary(Lexer *l, Params *params)
     Node *a = factor(l, params);
     if (!a) return NULL;
     while (true) {
-        TOKEN_KIND tk_kind = lexer_current(l).kind;
-        if (tk_kind == TK_POW) {
+        if (lexer_current(l).kind == TK_POW) {
             lexer_next(l);
             Node *b = factor(l, params);
             if (!b) return NULL;
@@ -476,17 +476,17 @@ static Node *factor(Lexer *l, Params *params)
     Token curr_tk = lexer_current(l);
     if (curr_tk.kind == TK_INT) {
         lexer_next(l);
-        return (Node *) node_number_make(token_int_get(&curr_tk));
+        return (Node *) node_number_make(lexer_token_int_get(&curr_tk));
     } else if (curr_tk.kind == TK_DEC) {
         lexer_next(l);
-        return (Node *) node_number_make(token_dec_get(&curr_tk));
+        return (Node *) node_number_make(lexer_token_dec_get(&curr_tk));
     } else if (curr_tk.kind == TK_CONST) {
         lexer_next(l);
-        CONST constt = token_const_get(&curr_tk);
+        CONST constt = lexer_token_const_get(&curr_tk);
         return (Node *) node_number_make(const_to_value[constt]);
     } else if (curr_tk.kind == TK_VAR) {
         lexer_next(l);
-        char var = token_var_get(&curr_tk);
+        char var = lexer_token_var_get(&curr_tk);
         if (var != 'x')
             params->param_list[params->count++] = var;
         return (Node *) node_var_make(var);
@@ -517,7 +517,7 @@ static Node *factor(Lexer *l, Params *params)
         lexer_next(l);
         Node *e = expression(l, params);
         if (!e) return NULL;
-        FUNC func_kind = token_func_get(&func_tk);
+        FUNC func_kind = lexer_token_func_get(&func_tk);
         func = node_func_make(e, func_kind);
         if (lexer_current(l).kind != TK_CLOSEP) {
             fprintf(stderr, "ERROR (parser): unmatching ( for function\n");
@@ -526,10 +526,10 @@ static Node *factor(Lexer *l, Params *params)
         lexer_next(l);
         return (Node *) func;
     } else if (curr_tk.kind == TK_ERROR) {
-        fprintf(stderr, "ERROR (lexer): %s\n", token_error_get(&curr_tk));
+        fprintf(stderr, "ERROR (lexer): %s\n", lexer_token_error_get(&curr_tk));
         return NULL;
     } else {
-        LexPrintBuffer tk_buf = curr_tk.print(&curr_tk);
+        LexerPrintBuffer tk_buf = lexer_token_print(&curr_tk);
         fprintf(stderr, "ERROR (parser): unexpected token: %s\n", tk_buf.str);
         return NULL;
     }
@@ -541,12 +541,12 @@ ParserTree *parser_parse(const char *src)
     ParserTree *tree = malloc(sizeof(ParserTree));
     tree->params = calloc(1, sizeof(Params));
 
-    Lexer lexer = lexer_create(src);
+    Lexer *lexer = lexer_create(src);
 
-    Node *tree_root = expression(&lexer, tree->params);
+    Node *tree_root = expression(lexer, tree->params);
     if (!tree_root)
         return NULL;
-    if (lexer_current(&lexer).kind != TK_EOF) {
+    if (lexer_current(lexer).kind != TK_EOF) {
         fprintf(stderr, "ERROR (parser): invalid expression\n");
         tree_root->vtable->free(tree_root);
         return NULL;

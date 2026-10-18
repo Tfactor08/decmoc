@@ -1,8 +1,8 @@
 /*
-Var:      char
-Number:   {digit}+(.{digit}+)? | .{digit}+
-Function: sin | cos | exp
-Constant: PI/pi | E/e | PHI/phi
+    Var:      char
+    Number:   {digit}+(.{digit}+)? | .{digit}+
+    Function: sin | cos | exp
+    Constant: PI/pi | E/e | PHI/phi
 */
 
 #include <stdio.h>
@@ -12,74 +12,17 @@ Constant: PI/pi | E/e | PHI/phi
 #include <assert.h>
 #include <stdbool.h>
 
+#include "lexer.h"
+
 #include "utils/basic_utils.c"
 
-#define MAX_STRING_LEN 256
-#define PRINT_BUFFER_CAP (1 << 8)
-
-#define SIN_STR "sin"
-#define COS_STR "cos"
-#define EXP_STR "exp"
-#define LOG_STR "ln"
-
-#define PI_STR  "pi"
-#define E_STR   "e"
-#define PHI_STR "phi"
-
-typedef enum {
-    TK_VAR = 1,
-    TK_INT,
-    TK_DEC,
-    TK_OPENP,
-    TK_CLOSEP,
-    TK_PLUS,
-    TK_MINUS,
-    TK_MUL,
-    TK_DIV,
-    TK_POW,
-    TK_FUNC,
-    TK_CONST,
-    TK_EOF,
-    TK_ERROR
-} TOKEN_KIND;
-
-typedef enum {
-    SIN,
-    COS,
-    EXP,
-    LOG
-} FUNC; 
-
-typedef enum {
-    PI,
-    E,
-    PHI
-} CONST; 
-
-typedef struct {
-    char str[PRINT_BUFFER_CAP];
-} LexPrintBuffer;
-
-typedef struct Token Token;
-
-struct Token {
-    TOKEN_KIND kind;
-    union {
-        int   i;
-        float f;
-        char  c;
-        char  s[MAX_STRING_LEN+1];
-    } value;
-    LexPrintBuffer (*print)(Token *self);
-};
-
-typedef struct {
+struct Lexer {
     const char *content;
     size_t count;
     size_t pos;
     Token current;
     Token next;
-} Lexer;
+};
 
 static char char_to_token[] = {
     ['+'] = TK_PLUS,
@@ -119,9 +62,9 @@ static bool is_literal(TOKEN_KIND kind)
 /* --- PRINT FUNCTIONS --- */
 
 #define MAKE_PRINT_FUNC(name, desc, format, field)            \
-    static LexPrintBuffer token_##name##_print(Token *tk)     \
+    static LexerPrintBuffer token_##name##_print(Token *tk)   \
     {                                                         \
-        LexPrintBuffer buf = {0};                             \
+        LexerPrintBuffer buf = {0};                           \
         snprintf(buf.str, PRINT_BUFFER_CAP, desc ": " format, \
                  tk->value.field) < 0 ?                       \
                  exit(EXIT_FAILURE) : (void) 0;               \
@@ -134,9 +77,9 @@ MAKE_PRINT_FUNC(literal, "Literal", "%c",   c);
 MAKE_PRINT_FUNC(var,     "Var",     "%c",   c);
 MAKE_PRINT_FUNC(error,   "Error",   "%s",   s);
 
-static LexPrintBuffer token_func_print(Token *tk)
+static LexerPrintBuffer token_func_print(Token *tk)
 {
-    LexPrintBuffer buf = {0};
+    LexerPrintBuffer buf = {0};
     switch (tk->value.i) {
         case SIN:
             snprintf(buf.str, PRINT_BUFFER_CAP, "Func: %s", SIN_STR);
@@ -156,9 +99,9 @@ static LexPrintBuffer token_func_print(Token *tk)
     return buf;
 }
 
-static LexPrintBuffer token_const_print(Token *tk)
+static LexerPrintBuffer token_const_print(Token *tk)
 {
-    LexPrintBuffer buf = {0};
+    LexerPrintBuffer buf = {0};
     switch (tk->value.i) {
         case PI:
             snprintf(buf.str, PRINT_BUFFER_CAP, "Const: %s", PI_STR);
@@ -173,9 +116,9 @@ static LexPrintBuffer token_const_print(Token *tk)
     return buf;
 }
 
-static LexPrintBuffer token_eof_print(Token *tk)
+static LexerPrintBuffer token_eof_print(Token *tk)
 {
-    LexPrintBuffer buf = {0};
+    LexerPrintBuffer buf = {0};
     snprintf(buf.str, PRINT_BUFFER_CAP, "EOF");
     return buf;
 }
@@ -237,43 +180,43 @@ static Token token_error_make(const char *msg)
 
 /* --- GET FUNCTIONS --- */
 
-int token_int_get(Token *tk)
+int lexer_token_int_get(Token *tk)
 {
     assert(tk->kind == TK_INT);
     return tk->value.i;
 }
 
-float token_dec_get(Token *tk)
+float lexer_token_dec_get(Token *tk)
 {
     assert(tk->kind == TK_DEC);
     return tk->value.f;
 }
 
-FUNC token_func_get(Token *tk)
+FUNC lexer_token_func_get(Token *tk)
 {
     assert(tk->kind == TK_FUNC);
     return tk->value.i;
 }
 
-CONST token_const_get(Token *tk)
+CONST lexer_token_const_get(Token *tk)
 {
     assert(tk->kind == TK_CONST);
     return tk->value.i;
 }
 
-char *token_error_get(Token *tk)
+char *lexer_token_error_get(Token *tk)
 {
     assert(tk->kind == TK_ERROR);
     return tk->value.s;
 }
 
-char token_literal_get(Token *tk)
+char lexer_token_literal_get(Token *tk)
 {
     assert(is_literal(tk->kind));
     return tk->value.c;
 }
 
-char token_var_get(Token *tk)
+char lexer_token_var_get(Token *tk)
 {
     assert(tk->kind == TK_VAR);
     return tk->value.c;
@@ -359,50 +302,61 @@ static Token token_next(Lexer *l)
     }
 }
 
-Token lexer_next(Lexer *l)
+LexerPrintBuffer lexer_token_print(Token *token)
 {
-    l->current = l->next;
-    l->next = token_next(l);
-    return l->current;
+    return token->print(token);
 }
 
-Token lexer_current(Lexer *l)
+Token lexer_next(Lexer *lexer)
 {
-    return l->current;
+    lexer->current = lexer->next;
+    lexer->next = token_next(lexer);
+    return lexer->current;
 }
 
-Token lexer_peek(Lexer *l)
+Token lexer_current(Lexer *lexer)
 {
-    return l->next;
+    return lexer->current;
 }
 
-Lexer lexer_create(const char *content)
+Token lexer_peek(Lexer *lexer)
 {
-    Lexer l = {
+    return lexer->next;
+}
+
+Lexer *lexer_create(const char *content)
+{
+    Lexer *lexer = malloc(sizeof(Lexer));
+    *lexer = (Lexer) {
         .content = content,
         .count = strlen(content),
     };
-    l.current = token_next(&l);
-    l.next = token_next(&l);
-    return l;
+    lexer->current = token_next(lexer);
+    lexer->next = token_next(lexer);
+    return lexer;
+}
+
+void lexer_free(Lexer *lexer)
+{
+    free(lexer);
 }
 
 #ifdef LEXER_MAIN
 int main(void)
 {
     char *expr = "ln1-1 + xsincos * cosEXP - -.69 + PI / 2^d?";
-    Lexer lexer = lexer_create(expr);
-    Token tk = {0};
+    Lexer *lexer = lexer_create(expr);
+    Token tk;
 
     printf("%s\n", expr);
     do {
-        tk = lexer_current(&lexer);
+        tk = lexer_current(lexer);
         if (tk.kind == TK_ERROR) {
-            fprintf(stderr, "ERROR (LEXER): %s\n", token_error_get(&tk));
+            fprintf(stderr, "ERROR (LEXER): %s\n", lexer_token_error_get(&tk));
             return 1;
         }
-        LexPrintBuffer res = tk.print(&tk);
+        LexerPrintBuffer res = lexer_token_print(&tk);
         printf("%s\n", res.str);
-    } while ((tk = lexer_next(&lexer)).kind != TK_EOF);
+    } while ((tk = lexer_next(lexer)).kind != TK_EOF);
 }
 #endif
