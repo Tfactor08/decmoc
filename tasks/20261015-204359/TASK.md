@@ -1,6 +1,6 @@
 # Axis Overlap
 
-- STATUS: OPEN
+- STATUS: CLOSED
 - PRIORITY: 250
 - TAGS: bug,plotter
 

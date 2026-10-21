@@ -6,6 +6,7 @@
 
 #include "parser.h"
 #include "slider.h"
+
 #include "utils/basic_utils.c"
 #include "utils/vector_utils.c"
 
@@ -60,65 +61,75 @@ const size_t graphColorCount = sizeof(graphColors) / sizeof(*graphColors);
 //       for example, "RenderAxes" has to add "offsetY" to the y coordinate of the vertical
 //       axis and "offsetX" to the the x coordinate of the horizontal axis
 //       (similar situation in "RenderGraphs").
+//       UPD: partly solved by introducing the ScreenI function which allows to ignore
+//       the global offsets.
 
-/* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates (ignoring the left panel) */
-Vector2 Screen(float x, float y)
+/* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates (ignoring the left panel).
+   The ignoreOffsetX and ignoreOffsetY parameters can be set to ignore the global offsets--it is useful when an edge
+   of the screen needs to be found.
+*/
+Vector2 Screen(float x, float y, bool ignoreOffsetX, bool ignoreOffsetY)
 {
+    float xShifted, yShifted;
+    float xMapped, yMapped;
+    xShifted = x + scale - (1 - ignoreOffsetX)*offsetX;
+    yShifted = y + scale - (1 - ignoreOffsetY)*offsetY;
+    if (xShifted < 0.0f) // This means we've reached the left edge in the world coordinates and--because the way we interpret--
+                         // the border of the left panel
+        xMapped = -2.0f; // So we send the point outside of the entire screen, thus treating the left border of the main panel
+                         // as the end of the screen
+    else
+        xMapped = (xShifted / (2*scale) * RIGHT_PANEL_RATIO*WIDTH) + LEFT_PANEL_RATIO*WIDTH;
+    yMapped = (1 - yShifted / (2*scale)) * HEIGHT;
     return (Vector2) {
-        .x = ((x + scale - offsetX)/(2*scale) * RIGHT_PANEL_RATIO*WIDTH) + LEFT_PANEL_RATIO*WIDTH,
-        .y = (1 - (y + scale - offsetY)/(2*scale)) * HEIGHT
-    };
-}
-
-/* Convert coordinates in the [-scale, scale] range to the corresponding screen coordinates (ignoring the left panel) (vector version) */
-Vector2 ScreenV(Vector2 *p)
-{
-    return (Vector2) {
-        .x = ((p->x + scale - offsetX)/(2*scale) * RIGHT_PANEL_RATIO*WIDTH) + LEFT_PANEL_RATIO*WIDTH,
-        .y = (1 - (p->y + scale - offsetY)/(2*scale)) * HEIGHT
+        .x = xMapped,
+        .y = yMapped
     };
 }
 
 /* Render a grid in the center of the screen (if the global offsets are zero) */
-void RenderGridField(int gridSize, Color color)
-{
-    float gridSizeNorm = ((float) gridSize / WIDTH) * scale;
-    float gridOffsetX = fmod(offsetX, gridSizeNorm); // The amount of pixels need to be right shifted for centering
-    float gridOffsetY = fmod(offsetY, gridSizeNorm); // The amount of pixels need to be up shifted for centering
-    // Vertical lines
-    for (float x = -scale - gridOffsetX; x <= scale - gridOffsetX; x += gridSizeNorm)
-        DrawLineV(Screen(x, -scale), Screen(x, scale), color);
-    // Horizontal lines
-    for (float y = -scale - gridOffsetY; y <= scale - gridOffsetY; y += gridSizeNorm)
-        DrawLineV(Screen(-scale, y), Screen(scale, y), color);
-}
+//void RenderGridField(int gridSize, Color color)
+//{
+//    float gridSizeNorm = ((float) gridSize / WIDTH) * scale;
+//    float gridOffsetX = fmod(offsetX, gridSizeNorm); // The amount of pixels need to be right shifted for centering
+//    float gridOffsetY = fmod(offsetY, gridSizeNorm); // The amount of pixels need to be up shifted for centering
+//    // Vertical lines
+//    for (float x = -scale - gridOffsetX; x <= scale - gridOffsetX; x += gridSizeNorm)
+//        DrawLineV(Screen(x, -scale), Screen(x, scale), color);
+//    // Horizontal lines
+//    for (float y = -scale - gridOffsetY; y <= scale - gridOffsetY; y += gridSizeNorm)
+//        DrawLineV(Screen(-scale, y), Screen(scale, y), color);
+//}
 
 void RenderAxes(void)
 {
     // Vertical axis
-    DrawLineEx(Screen(0, -scale + offsetY),
-               Screen(0, scale + offsetY),
+    DrawLineEx(Screen(0.0f, -scale, false, true),
+               Screen(0.0f, scale, false, true),
                LINE_THICKNESS, FOREGROUND);
     // Horizontal axis
-    DrawLineEx(Screen(-scale + offsetX, 0),
-               Screen(scale + offsetX, 0),
+    DrawLineEx(Screen(-scale, 0.0f, true, false),
+               Screen(scale, 0.0f, true, false),
                LINE_THICKNESS, FOREGROUND);
 }
 
+// TODO: The new Screen function doesn't do its job here since the -1 (or any negative) value meant to send the
+//       points that are out of the main panel is for some reason is treated as value 1 by the DrawText function,
+//       so the text appears at the left of the screen
 void RenderAxesNumbers(void)
 {
-    const float margin = 0.02f;
+    const float axisMargin = 0.02f;
     char num[1 << 2];
     // X-axis
     for (int nX = -scale + offsetX; nX <= scale + offsetX; nX++) {
-        Vector2 textPos = Screen(nX, 0.0f - margin);
+        Vector2 textPos = Screen(nX, 0.0f - axisMargin, false, false);
         itoa(nX, num, sizeof(num));
         DrawText(num, textPos.x, textPos.y, TEXT_SIZE, BLACK);
     }
     // Y-axis
     for (int nY = -scale + offsetY; nY <= scale + offsetY; nY++) {
         if (nY == 0) continue; // Avoid rendering 0 twice
-        Vector2 textPos = Screen(0.0f + margin, nY);
+        Vector2 textPos = Screen(0.0f + axisMargin, nY, false, false);
         itoa(nY, num, sizeof(num));
         DrawText(num, textPos.x, textPos.y, TEXT_SIZE, BLACK);
     }
@@ -145,20 +156,20 @@ void RenderGraphs(void)
         ParserTree *tree = func->expr_tree;
         Color color = graphColors[funci % graphColorCount];
         float y = parser_eval(tree, a + offsetX);
-        Vector2 firstPoint = (Vector2) { a + offsetX, y }, secondPoint;
+        Vector2 firstPoint = (Vector2) { a, y }, secondPoint;
         for (float x = a; x <= b; x += XSTEP) {
             y = parser_eval(tree, x + offsetX);
-            secondPoint = (Vector2) { x + offsetX, y };
-            DrawLineEx(ScreenV(&firstPoint),
-                       ScreenV(&secondPoint),
+            secondPoint = (Vector2) { x, y };
+            DrawLineEx(Screen(firstPoint.x, firstPoint.y, true, false),
+                       Screen(secondPoint.x, secondPoint.y, true, false),
                        LINE_THICKNESS, color);
             firstPoint = secondPoint;
         }
         // Make sure last line is rendered as well regardless of the "b" and "XSTEP" values
         y = parser_eval(tree, b + offsetX);
-        secondPoint = (Vector2) { b + offsetX, y };
-        DrawLineEx(ScreenV(&firstPoint),
-                   ScreenV(&secondPoint),
+        secondPoint = (Vector2) { b, y };
+        DrawLineEx(Screen(firstPoint.x, firstPoint.y, true, false),
+                   Screen(secondPoint.x, secondPoint.y, true, false),
                    LINE_THICKNESS, color);
     }
 }
@@ -176,7 +187,7 @@ void SetCurrentOfssets(void)
 {
     float mouseX = (float) GetMouseX();
     float mouseY = (float) GetMouseY();
-    
+
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         startPanX = mouseX;
         startPanY = mouseY;
@@ -191,7 +202,7 @@ void SetCurrentOfssets(void)
     }
 }
 
-// TODO: obsolete function?
+// TODO: Obsolete function?
 /* Acquire parameters for a function (if any) from user */
 void AcquireFuncParameters(Func *func)
 {
@@ -240,8 +251,8 @@ void ParseInputFuncs(int argc, char *argv[])
     inputFuncCount = argc - 1;
 }
 
-// TODO: better naming
-// NOTE: these can be textures
+// TODO: Find better naming
+// NOTE: These can be textures
 void RenderUIElements()
 {
     DrawLine(LEFT_PANEL_RATIO*WIDTH, 0,
@@ -296,9 +307,10 @@ int main(int argc, char *argv[])
                 SetCurrentOfssets();
             }
 
-            // TODO: grid fileds became messed up
+            // TODO: Grid fileds have become messed up
             //RenderGridField(GRID_SIZE / 4, GRID_COLOR2);
             //RenderGridField(GRID_SIZE, GRID_COLOR1);
+            //RenderGridField();
 
             ProcessSliders();
 
